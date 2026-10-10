@@ -21,9 +21,16 @@ Ordinary consumers and methods stay unchanged. Providers advertise the versioned
 structural marker `~effect-watch/options/v1`; an unenhanced filesystem is rejected
 with `PlatformError/BadArgument`. No separate observation service is required.
 
-Baseline next: portable package scaffolding and a direct backend-to-filesystem
-implementation of the enhancement vocabulary. Capture one backend/manager; never
-silently return to native when forced. A later stage supplies the actual scoped
-daemon backend, transport and conformance tests. Plain events cannot encode ready,
-resync or clocks: fail on known continuity loss, or offer optional explicit helpers
-for stronger coherent operations. No Plus runtime/policy layer is mandatory.
+Baseline now implemented: Watchman `8a5313d4`, Plus `481abfcc`. Typechecks and
+builds passed in both repos; **6 Watchman seam tests**, **8 Plus/native tests**.
+One backend owner is captured and shared; None and known completion fail, and
+sibling stream scopes release independently. No Plus runtime dependency exists.
+Tarballs installed into `/home/rektide/tmp-opencode/watch-additive-consumer` passed
+**3 public-export tests** and strict typecheck: identical consumer on either
+provider without constructing Plus's decorator for Watchman, and one consumer
+Effect runtime identity. Maintained consumer proof is in the Plus design home.
+
+A later stage supplies the actual scoped daemon backend, transport and live
+conformance tests. Plain events cannot encode ready, resync or clocks: fail on
+known continuity loss, or offer optional explicit coherent helpers. No Plus
+runtime/policy layer is mandatory. No daemon or live service was used here.
