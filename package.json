@@ -1,10 +1,27 @@
 {
 	"name": "effect-watchman",
 	"version": "1.0.0",
-	"description": "",
-	"main": "index.js",
+	"description": "Independent enhanced Effect filesystem watching through a WatchBackend",
+	"main": "./dist/effect-watchman.js",
+	"types": "./dist/effect-watchman.d.ts",
+	"exports": {
+		".": { "types": "./dist/effect-watchman.d.ts", "default": "./dist/effect-watchman.js" },
+		"./package.json": "./package.json"
+	},
+	"files": ["dist", "README.md"],
+	"sideEffects": false,
 	"scripts": {
-		"test": "echo \"Error: no test specified\" && exit 1"
+		"build": "tsgo -p tsconfig.build.json",
+		"typecheck": "tsgo --noEmit -p tsconfig.json",
+		"test": "bun test ./test"
+	},
+	"peerDependencies": { "effect": "4.0.1" },
+	"devDependencies": {
+		"effect": "4.0.1",
+		"@effect/platform-node": "4.0.1",
+		"@effect/platform-node-shared": "4.0.1",
+		"@types/bun": "1.4.0",
+		"@typescript/native-preview": "7.0.0-dev.20251207.1"
 	},
 	"repository": {
 		"type": "git",
@@ -17,6 +34,5 @@
 	"bugs": {
 		"url": "https://github.com/rektide/effect-watchman/issues"
 	},
-	"homepage": "https://github.com/rektide/effect-watchman#readme",
-	"module": "effect-watchman.js"
+	"homepage": "https://github.com/rektide/effect-watchman#readme"
 }
