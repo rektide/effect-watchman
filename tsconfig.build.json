@@ -7,7 +7,7 @@
     "sourceMap": true,
     "rootDir": ".",
     "outDir": "dist",
-    "types": []
+    "types": ["node"]
   },
   "include": ["effect-watchman.ts", "src/**/*.ts"]
 }

@@ -1,6 +1,9 @@
 export * as Watchman from "./Watch.js"
 
 import { Effect, FileSystem, Layer, Option, Path, PlatformError, Predicate, Stream } from "effect"
+import { backendLayer, type Options } from "./Backend.js"
+
+export { backendLayer, type Options } from "./Backend.js"
 
 /** Structural contract shared with Watch Plus, without a runtime dependency. */
 export const TypeId = "~effect-watch/options/v1"
@@ -80,3 +83,6 @@ export const fromBackend = Layer.effect(FileSystem.FileSystem, Effect.gen(functi
   const backend = yield* FileSystem.WatchBackend
   return make(fs, path, backend)
 }))
+
+/** Explicit socket-configured enhanced filesystem; requires base FileSystem and Path. */
+export const layer = (options: Options) => fromBackend.pipe(Layer.provide(backendLayer(options)))

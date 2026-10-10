@@ -22,9 +22,24 @@ Do not restore that design as a constraint.
   runtime/dependency.
 - Exact Effect 4.0.1 peer/test baseline and portable build/scripts/exports.
 
-**Transport, manager and actual daemon backend are NOT implemented.** The current
-fromBackend layer requires a supplied backend. Fixtures prove the seam, not a
-usable daemon connection. First-cut native/Plus functionality is separately real.
+## Implemented daemon stage (2026-10-10)
+
+`Watchman.layer({ socketPath })` is now a usable scoped enhanced filesystem;
+`Watchman.backendLayer({ socketPath })` is the ordinary Effect backend. Reuse the
+same backend Layer value for NodeFileSystem construction and `fromBackend` to
+share one connection. Explicit JSON-line Unix transport, schema decoding,
+serialized bounded commands, cancellation-first decoding, latched terminal loss,
+bounded deadlines/framing/delivery and independent subscriptions are implemented.
+`watch-project` canonical routing / logical absolute paths, clock/since boundaries,
+exists/new mapping, direct/file/recursive selection and cookie filtering are real.
+Same-directory project acquisition is cached; daemon root sharing is delegated to
+watch-project. No merged-overlap subscription optimizer or root unwatch is added.
+
+Live test command is documented in README and package `test:daemon`. Verified
+against `/usr/local/bin/watchman-facebook`, stock version 20260708.093114.0,
+build 54602bcad27e0887fd26f77c6747a38f0d701fc7, in a private owned foreground
+daemon. First vertical run: **7 passed**, including the daemon lifecycle test.
+No ambient daemon/service contact, publishing or push.
 
 Commits: gate `c6f11e13`; package baseline `8a5313d4`.
 Plus gate `ebdc5af0`; native baseline `481abfcc`.

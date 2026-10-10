@@ -13,7 +13,8 @@
 	"scripts": {
 		"build": "tsgo -p tsconfig.build.json",
 		"typecheck": "tsgo --noEmit -p tsconfig.json",
-		"test": "bun test ./test"
+		"test": "bun test ./test",
+		"test:daemon": "bun test ./test/daemon.test.ts"
 	},
 	"peerDependencies": { "effect": "4.0.1" },
 	"devDependencies": {
@@ -21,6 +22,7 @@
 		"@effect/platform-node": "4.0.1",
 		"@effect/platform-node-shared": "4.0.1",
 		"@types/bun": "1.4.0",
+		"@types/node": "26.6.5",
 		"@typescript/native-preview": "7.0.0-dev.20251207.1"
 	},
 	"repository": {
