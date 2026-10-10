@@ -33,7 +33,7 @@ const program = Effect.gen(function*() {
   trailing separators normalize; absolute/empty/escaping paths fail.
 - `followReplacements: true`: existing file parent-anchor, filter basename;
   parent/root replacement and missing targets are not implemented yet.
-  It watches the lexical entry, not writes to an external symlink referent.
+  It watches the lexical entry, not writes through symbolic links to a referent.
 
 Streams emit ordinary Create/Update/Remove hints. Known completion fails with
 PlatformError/UnexpectedEof; failures propagate. Reconcile before reopening after
