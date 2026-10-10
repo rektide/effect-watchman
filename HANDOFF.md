@@ -41,6 +41,13 @@ build 54602bcad27e0887fd26f77c6747a38f0d701fc7, in a private owned foreground
 daemon. First vertical run: **7 passed**, including the daemon lifecycle test.
 No ambient daemon/service contact, publishing or push.
 
+Deterministic scripted-peer keepers now cover rejected attach cleanup, mismatched
+reply settlement of active/queued commands, cancellation-first decoding, split
+UTF-8 / multi-frame delivery, malformed JSON/schema/UTF-8, frame overflow, silent
+deadline, queued cancellation, subscribe interruption, silent unsubscribe and
+latched bounded delivery overflow. Full run: **16 passed**, no failures, including
+private real daemon; `bun run typecheck` and `bun run build` passed.
+
 Commits: gate `c6f11e13`; package baseline `8a5313d4`.
 Plus gate `ebdc5af0`; native baseline `481abfcc`.
 
@@ -59,7 +66,7 @@ accessor on Watchman with no Plus decorator, and both packages resolved its one
 Effect identity. Source/evidence maintained in the Plus checkout at
 `design/watch/{consumer-proof.test.ts,additive-gate.md,contract.md}`.
 
-## Next stage for Sol Medium, parent-coordinated
+## Original daemon-stage checklist (implementation above supersedes future tense)
 
 1. **Transport**: explicit Unix socket; scoped immediate acquisition; serialized
    owned command Deferreds; Schema validation at the wire boundary; split UTF-8
