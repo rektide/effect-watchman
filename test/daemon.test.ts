@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test"
 import { spawn } from "node:child_process"
 import { existsSync } from "node:fs"
-import { mkdir, mkdtemp, readFile, rename, rm, writeFile, unlink } from "node:fs/promises"
+import { mkdir, mkdtemp, readFile, rename, rm, symlink, writeFile, unlink } from "node:fs/promises"
 import { join } from "node:path"
 import { NodeFileSystem, NodePath } from "@effect/platform-node"
 import { Effect, Fiber, FileSystem, Layer, Stream } from "effect"
@@ -26,6 +26,8 @@ test.skipIf(!binary)("private stock daemon: public backend and enhanced fs.watch
   await mkdir(join(root, "nested"))
   await mkdir(join(root, "ignored"))
   await writeFile(join(root, "config"), "original")
+  const alias = join(scratch, "logical-alias")
+  await symlink(root, alias)
   const env = { ...process.env }
   delete env.WATCHMAN_SOCK
   const daemon = spawn(binary ?? "", ["--foreground", "--no-save-state", "--no-site-spawner",
@@ -40,11 +42,15 @@ test.skipIf(!binary)("private stock daemon: public backend and enhanced fs.watch
     const direct: Array<FileSystem.WatchEvent> = []
     const stable: Array<FileSystem.WatchEvent> = []
     const ordinary: Array<FileSystem.WatchEvent> = []
+    const file: Array<FileSystem.WatchEvent> = []
+    const logical: Array<FileSystem.WatchEvent> = []
     await Effect.runPromise(Effect.scoped(Effect.gen(function*() {
       const fs = yield* Watchman.fileSystem
       const first = yield* fs.watch(root, { recursive: true, ignore: ["ignored"] }).pipe(Stream.runForEach((event) => Effect.sync(() => recursive.push(event))), Effect.forkScoped)
       yield* fs.watch(root).pipe(Stream.runForEach((event) => Effect.sync(() => direct.push(event))), Effect.forkScoped)
       yield* fs.watch(join(root, "config"), { followReplacements: true }).pipe(Stream.runForEach((event) => Effect.sync(() => stable.push(event))), Effect.forkScoped)
+      yield* fs.watch(join(root, "config")).pipe(Stream.runForEach((event) => Effect.sync(() => file.push(event))), Effect.forkScoped)
+      yield* fs.watch(alias, { recursive: true }).pipe(Stream.runForEach((event) => Effect.sync(() => logical.push(event))), Effect.forkScoped)
       // Same public backend, independently constructed ordinary Node filesystem.
       yield* Effect.gen(function*() {
         const original = yield* FileSystem.FileSystem
@@ -57,6 +63,7 @@ test.skipIf(!binary)("private stock daemon: public backend and enhanced fs.watch
       yield* Effect.promise(async () => {
         await writeFile(join(root, "created"), "one")
         await until(() => recursive.some((event) => event._tag === "Create" && event.path === join(root, "created")))
+        await until(() => logical.some((event) => event._tag === "Create" && event.path === join(alias, "created")))
         await writeFile(join(root, "created"), "two")
         await until(() => recursive.some((event) => event._tag === "Update" && event.path === join(root, "created")))
         await unlink(join(root, "created"))
@@ -74,6 +81,8 @@ test.skipIf(!binary)("private stock daemon: public backend and enhanced fs.watch
         await writeFile(join(root, "config"), "later edit")
         await until(() => stable.length > count)
         expect(stable.every((event) => event.path === join(root, "config"))).toBe(true)
+        await until(() => file.length > 0)
+        expect(file.every((event) => event.path === join(root, "config"))).toBe(true)
         expect(direct.some((event) => event.path.endsWith("/nested/deep"))).toBe(false)
         expect(recursive.some((event) => event.path.includes("/ignored/"))).toBe(false)
         await pause(200)

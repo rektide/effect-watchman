@@ -137,7 +137,13 @@ export class Delivery<A> implements AsyncIterable<A> {
     if (this.values.length >= this.capacity) { this.fail(new Error("Watchman delivery overflow; reconcile before reopening")); return }
     this.values.push(value)
   }
-  fail(error: Error): void { this.error = error; this.values = []; this.waiter?.reject(error); this.waiter = undefined }
+  fail(error: Error): void {
+    if (this.error) return
+    this.error = error
+    this.values = []
+    this.waiter?.reject(error)
+    this.waiter = undefined
+  }
   [Symbol.asyncIterator](): AsyncIterator<A> {
     return { next: () => {
       if (this.error) return Promise.reject(this.error)

@@ -31,7 +31,7 @@ export const fileSystem = Effect.flatMap(FileSystem.FileSystem, (fs) => supports
 /**
  * Direct enhanced backend route. Never calls the captured fs.watch or a Plus
  * decorator. The backend is captured once, not constructed for each stream.
- * A later daemon manager supplies this backend; this baseline is not transport.
+ * The socket-configured backendLayer supplies the shared scoped daemon manager.
  */
 export function make(fs: FileSystem.FileSystem, path: Path.Path, backend: FileSystem.WatchBackend["Service"]): EnhancedFileSystem {
   return {

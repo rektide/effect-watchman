@@ -39,7 +39,7 @@ export const backendLayer = (options: Options) => Layer.effect(FileSystem.WatchB
         const boundary = yield* command(["clock", root], "clock")
         const name = `effect-watchman-${++serial}`
         const delivery = new Delivery<FileSystem.WatchEvent>(options.maxBufferedEvents ?? 1024)
-        yield* Effect.acquireRelease(Effect.sync(() => {
+        yield* Effect.acquireRelease(Effect.try({ try: () => {
           connection.check()
           connection.listeners.set(name, {
             fail: (error) => delivery.fail(error),
@@ -55,7 +55,7 @@ export const backendLayer = (options: Options) => Layer.effect(FileSystem.WatchB
               }
             }
           })
-        }), () => Effect.gen(function*() {
+        }, catch: failure }), () => Effect.gen(function*() {
           connection.listeners.delete(name)
           delivery.fail(new Error("Watchman subscription scope closed"))
           yield* command(["unsubscribe", root, name], "unsubscribe", name, options.cleanupTimeoutMs ?? 500).pipe(Effect.ignore)

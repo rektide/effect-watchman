@@ -200,5 +200,30 @@ test("bounded delivery overflow discards buffered hints and latches failure", as
   const iterator = delivery[Symbol.asyncIterator]()
   await expect(iterator.next()).rejects.toThrow("overflow")
   delivery.push(3)
+  delivery.fail(new Error("later cleanup must not replace loss"))
   await expect(iterator.next()).rejects.toThrow("overflow")
+})
+
+test("public watch preserves terminal disconnect/fresh-history/overflow as typed failure", async () => {
+  for (const loss of ["disconnect", "fresh", "overflow"]) {
+    await fixture(async (peer) => {
+      const layer = Watchman.layer({ socketPath: peer.socketPath, maxBufferedEvents: 1 }).pipe(
+        Layer.provide(Layer.mergeAll(NodeFileSystem.layer, NodePath.layer))
+      )
+      const result = await Effect.runPromise(Effect.gen(function*() {
+        const fs = yield* Watchman.fileSystem
+        return yield* fs.watch(peer.directory).pipe(Stream.runCollect, Effect.result)
+      }).pipe(Effect.provide(layer)))
+      expect(result._tag).toBe("Failure")
+      if (result._tag === "Failure") expect(result.failure.reason._tag).toBe("Unknown")
+      await until(() => peer.sockets.size === 0)
+    }, (command, socket, directory) => {
+      common(command, socket, directory)
+      if (command[0] !== "subscribe") return
+      reply(socket, { subscribe: command[2] })
+      if (loss === "disconnect") { socket.end(); return }
+      reply(socket, { subscription: command[2], is_fresh_instance: loss === "fresh",
+        files: ["one", "two", "three"].map((name) => ({ name, exists: true, new: true })) })
+    })
+  }
 })

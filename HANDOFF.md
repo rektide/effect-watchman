@@ -45,8 +45,20 @@ Deterministic scripted-peer keepers now cover rejected attach cleanup, mismatche
 reply settlement of active/queued commands, cancellation-first decoding, split
 UTF-8 / multi-frame delivery, malformed JSON/schema/UTF-8, frame overflow, silent
 deadline, queued cancellation, subscribe interruption, silent unsubscribe and
-latched bounded delivery overflow. Full run: **16 passed**, no failures, including
-private real daemon; `bun run typecheck` and `bun run build` passed.
+latched bounded delivery overflow. Public disconnect/fresh-history/overflow remain
+typed stream failures. Loss is not overwritten by subsequent scope cleanup;
+registration after a concurrent terminal failure is typed rather than a defect.
+Full run: **17 passed**, no failures, including private real daemon; `bun run
+typecheck` and `bun run build` passed. Live fixture also checks ordinary file
+selection and canonical symlink-directory routing back to absolute logical paths.
+
+Remaining capabilities: no readiness/catch-up/inventory API, inode-preserving file
+identity, ancestor acquisition for missing targets, parent/root replacement,
+merged-overlap subscription optimization, reconnect, portable cursors, discovery,
+autospawn or daemon expression pushdown. Root watches outlive the client socket
+because the daemon owns them; only named subscriptions and the client connection
+are disposed. Any further topology/catch-up/marker evolution belongs to a separate
+architecture decision, not this completed v1 stage. Stop here for parent review.
 
 Commits: gate `c6f11e13`; package baseline `8a5313d4`.
 Plus gate `ebdc5af0`; native baseline `481abfcc`.
