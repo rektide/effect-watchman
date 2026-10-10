@@ -52,6 +52,67 @@ const publicLayer = (socketPath: string, cleanupTimeoutMs = 100) => Watchman.lay
   Layer.provide(Layer.mergeAll(NodeFileSystem.layer, NodePath.layer))
 )
 
+test("interrupting delayed attach B preserves A and cleans late B acknowledgement", async () => {
+  await fixture(async (peer) => {
+    const a: Array<string> = []
+    const b: Array<string> = []
+    await Effect.runPromise(Effect.scoped(Effect.gen(function*() {
+      const fs = yield* Watchman.fileSystem
+      yield* fs.watch(peer.directory).pipe(Stream.runForEach((event) => Effect.sync(() => a.push(event.path))), Effect.forkScoped)
+      yield* Effect.promise(() => until(() => peer.commands.some((command) => command[0] === "subscribe")))
+      yield* Effect.sleep("20 millis")
+      const attaching = yield* fs.watch(peer.directory).pipe(Stream.runForEach((event) => Effect.sync(() => b.push(event.path))), Effect.forkScoped)
+      yield* Effect.promise(() => until(() => peer.commands.filter((command) => command[0] === "subscribe").length === 2))
+      yield* Fiber.interrupt(attaching)
+      expect(peer.sockets.size).toBe(1)
+      const subscriptions = peer.commands.filter((command) => command[0] === "subscribe")
+      expect(peer.commands.some((command) => command[0] === "unsubscribe" && command[2] === subscriptions[1]?.[2])).toBe(true)
+      yield* Effect.promise(async () => {
+        const socket = [...peer.sockets][0]
+        if (!socket) throw new Error("healthy sibling socket was destroyed")
+        reply(socket, { subscription: subscriptions[0]?.[2], files: [{ name: "a-alive", exists: true, new: true }] })
+        await until(() => a.includes(join(peer.directory, "a-alive")))
+      })
+      expect(b).toEqual([])
+    })).pipe(Effect.provide(publicLayer(peer.socketPath, 300))))
+    await until(() => peer.sockets.size === 0)
+    expect(peer.commands.filter((command) => command[0] === "unsubscribe")).toHaveLength(2)
+  }, (command, socket, directory) => {
+    common(command, socket, directory)
+    if (command[0] !== "subscribe") return
+    if (command[2] === "effect-watchman-1") { reply(socket, { subscribe: command[2] }); return }
+    setTimeout(() => {
+      reply(socket, { subscribe: command[2] })
+      reply(socket, { subscription: command[2], files: [{ name: "late-b", exists: true, new: true }] })
+    }, 70)
+  })
+})
+
+test("cached project acquisition is manager-owned when first requester is interrupted", async () => {
+  await fixture(async (peer) => {
+    const events: Array<string> = []
+    await Effect.runPromise(Effect.scoped(Effect.gen(function*() {
+      const fs = yield* Watchman.fileSystem
+      const first = yield* fs.watch(peer.directory).pipe(Stream.runDrain, Effect.forkScoped)
+      yield* Effect.promise(() => until(() => peer.commands.some((command) => command[0] === "watch-project")))
+      yield* fs.watch(peer.directory).pipe(Stream.runForEach((event) => Effect.sync(() => events.push(event.path))), Effect.forkScoped)
+      yield* Effect.sleep("20 millis")
+      yield* Fiber.interrupt(first)
+      yield* Effect.promise(() => until(() => events.length === 1))
+      expect(events).toEqual([join(peer.directory, "survivor")])
+      expect(peer.commands.filter((command) => command[0] === "watch-project")).toHaveLength(1)
+    })).pipe(Effect.provide(publicLayer(peer.socketPath, 300))))
+    await until(() => peer.sockets.size === 0)
+  }, (command, socket, directory) => {
+    if (command[0] === "watch-project") { setTimeout(() => reply(socket, { watch: directory }), 80); return }
+    common(command, socket, directory)
+    if (command[0] === "subscribe") {
+      reply(socket, { subscribe: command[2] })
+      reply(socket, { subscription: command[2], files: [{ name: "survivor", exists: true, new: true }] })
+    }
+  })
+})
+
 test("rejected subscription releases acquired listener and connection through public layer", async () => {
   await fixture(async (peer) => {
     const result = await Effect.runPromise(Effect.gen(function*() {
