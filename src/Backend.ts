@@ -16,20 +16,23 @@ export const backendLayer = (options: Options) => Layer.effect(FileSystem.WatchB
   const connection = yield* Effect.acquireRelease(Effect.sync(() => new Connection(options)), (connection) => Effect.sync(() => connection.close()))
   yield* Effect.tryPromise({ try: (signal) => connection.connect(signal), catch: failure })
   const roots = new Map<string, Promise<Reply>>()
+  // Shared acquisition belongs to this scoped connection, not the first lease.
+  // Connection closure settles it; the command deadline still bounds it.
+  const projectSignal = new AbortController().signal
   let serial = 0
   return FileSystem.WatchBackend.of({
     register(target, info, watchOptions) {
       return Option.some(Stream.unwrap(Effect.gen(function*() {
         const logical = resolve(info.type === "Directory" ? target : dirname(target))
         const canonical = yield* Effect.tryPromise({ try: () => realpath(logical), catch: failure })
-        const command = (args: ReadonlyArray<unknown>, key: string, value?: string, timeout?: number) => Effect.tryPromise({
-          try: (signal) => connection.command(args, key, value, signal, timeout), catch: failure
+        const command = (args: ReadonlyArray<unknown>, key: string, value?: string, timeout?: number, queueTimeout?: number) => Effect.tryPromise({
+          try: (signal) => connection.command(args, key, value, signal, timeout, queueTimeout), catch: failure
         })
-        const project = yield* Effect.tryPromise({ try: (signal) => {
+        const project = yield* Effect.tryPromise({ try: () => {
           connection.check()
           const cached = roots.get(canonical)
           if (cached) return cached
-          const acquired = connection.command(["watch-project", canonical], "watch", undefined, signal)
+          const acquired = connection.command(["watch-project", canonical], "watch", undefined, projectSignal)
           roots.set(canonical, acquired)
           acquired.catch(() => roots.delete(canonical))
           return acquired
@@ -58,7 +61,11 @@ export const backendLayer = (options: Options) => Layer.effect(FileSystem.WatchB
         }, catch: failure }), () => Effect.gen(function*() {
           connection.listeners.delete(name)
           delivery.fail(new Error("Watchman subscription scope closed"))
-          yield* command(["unsubscribe", root, name], "unsubscribe", name, options.cleanupTimeoutMs ?? 500).pipe(Effect.ignore)
+          const cleanup = options.cleanupTimeoutMs ?? 500
+          // Give an abandoned subscribe its bounded wire deadline before the
+          // cleanup's own on-wire deadline; don't truncate reply ownership.
+          yield* command(["unsubscribe", root, name], "unsubscribe", name, cleanup,
+            (options.requestTimeoutMs ?? 3000) + cleanup).pipe(Effect.ignore)
         }))
         const relativeRoot = relative(root, canonical)
         if (relativeRoot === ".." || relativeRoot.startsWith(".." + sep)) return yield* Effect.fail(failure("Watchman root does not contain target"))

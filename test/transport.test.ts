@@ -74,7 +74,7 @@ test("interrupting delayed attach B preserves A and cleans late B acknowledgemen
         await until(() => a.includes(join(peer.directory, "a-alive")))
       })
       expect(b).toEqual([])
-    })).pipe(Effect.provide(publicLayer(peer.socketPath, 300))))
+    })).pipe(Effect.provide(publicLayer(peer.socketPath, 50))))
     await until(() => peer.sockets.size === 0)
     expect(peer.commands.filter((command) => command[0] === "unsubscribe")).toHaveLength(2)
   }, (command, socket, directory) => {
@@ -84,7 +84,7 @@ test("interrupting delayed attach B preserves A and cleans late B acknowledgemen
     setTimeout(() => {
       reply(socket, { subscribe: command[2] })
       reply(socket, { subscription: command[2], files: [{ name: "late-b", exists: true, new: true }] })
-    }, 70)
+    }, 100)
   })
 })
 
@@ -205,7 +205,7 @@ test("malformed JSON/schema/UTF-8 and oversized frames are latched terminal fail
   }
 })
 
-test("silent peer deadline and queued cancellation close socket and settle all requests", async () => {
+test("silent wire request still reaches terminal deadline after caller cancellation", async () => {
   for (const cancel of [false, true]) {
     await fixture(async (peer) => {
       const connection = new Connection({ socketPath: peer.socketPath, requestTimeoutMs: 100 })
@@ -218,13 +218,17 @@ test("silent peer deadline and queued cancellation close socket and settle all r
         await until(() => peer.commands.length === 1)
         if (cancel) controller.abort()
         expect((await settled).map((result) => result.status)).toEqual(["rejected", "rejected"])
+        if (cancel) {
+          await pause(20)
+          expect(peer.sockets.size).toBe(1)
+        }
         await until(() => peer.sockets.size === 0)
       } finally { connection.close() }
     }, () => undefined)
   }
 })
 
-test("interruption during subscribe releases connection immediately", async () => {
+test("interrupted subscribe with silent wire reply still has bounded cleanup", async () => {
   await fixture(async (peer) => {
     await Effect.runPromise(Effect.scoped(Effect.gen(function*() {
       const fs = yield* Watchman.fileSystem
@@ -263,6 +267,38 @@ test("bounded delivery overflow discards buffered hints and latches failure", as
   delivery.push(3)
   delivery.fail(new Error("later cleanup must not replace loss"))
   await expect(iterator.next()).rejects.toThrow("overflow")
+})
+
+test("unsent cancellation skips only its command and frees bounded queue capacity", async () => {
+  await fixture(async (peer) => {
+    const connection = new Connection({ socketPath: peer.socketPath, requestTimeoutMs: 500, maxPendingCommands: 2 })
+    try {
+      const signal = new AbortController().signal
+      await connection.connect(signal)
+      const first = connection.command(["clock", "first"], "clock", undefined, signal)
+      await until(() => peer.commands.length === 1)
+      const controller = new AbortController()
+      const canceled = connection.command(["clock", "never-sent"], "clock", undefined, controller.signal)
+      const cancellation = Promise.allSettled([canceled])
+      controller.abort()
+      expect((await cancellation)[0]?.status).toBe("rejected")
+      const third = connection.command(["clock", "third"], "clock", undefined, signal)
+      await pause(20)
+      expect(peer.sockets.size).toBe(1)
+      expect(peer.commands).toEqual([["clock", "first"]])
+      const socket = [...peer.sockets][0]
+      if (!socket) throw new Error("unsent cancellation destroyed socket")
+      reply(socket, { clock: "c:first" })
+      expect((await first).clock).toBe("c:first")
+      expect((await third).clock).toBe("c:third")
+      expect(peer.commands).toEqual([["clock", "first"], ["clock", "third"]])
+      const alreadyCanceled = new AbortController()
+      alreadyCanceled.abort()
+      await expect(connection.command(["clock", "also-never-sent"], "clock", undefined, alreadyCanceled.signal)).rejects.toThrow("before transmission")
+      connection.check()
+    } finally { connection.close() }
+    await until(() => peer.sockets.size === 0)
+  }, (command, socket) => { if (command[1] === "third") reply(socket, { clock: "c:third" }) })
 })
 
 test("public watch preserves terminal disconnect/fresh-history/overflow as typed failure", async () => {

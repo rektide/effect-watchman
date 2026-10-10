@@ -60,6 +60,38 @@ because the daemon owns them; only named subscriptions and the client connection
 are disposed. Any further topology/catch-up/marker evolution belongs to a separate
 architecture decision, not this completed v1 stage. Stop here for parent review.
 
+## Focused cancellation repair
+
+Parent review found command AbortSignal cancellation terminally failed the shared
+connection, including unsent work. Regression at predecessor `7832cd77`: A attached,
+B's subscribe reply delayed, then B interrupted. B cleanup never sent unsubscribe;
+A's connection was failed. A second keeper interrupted the first cached
+watch-project requester while another consumer awaited that acquisition; the
+sibling never attached. Both failed before the repair (proof commit `5bc1d862`).
+
+Repair separates caller cancellation from serialized wire ownership. Unsent
+commands are removed from the bounded queue; transmitted commands retain their
+reply/deadline owner while their caller can stop. Consumer finalizers queue
+unsubscribe, including after a late subscribe acknowledgement, suppressing all
+B delivery while A remains live. Cleanup queue wait is bounded by request +
+cleanup timeout, with the cleanup deadline applied separately after transmission;
+thus a cleanup timer does not prematurely cut off a still-valid subscribe reply.
+Real wire/cleanup silence and corruption still fail the shared connection. Cached
+project acquisition belongs to the scoped manager, never its first caller's signal.
+
+No reconnect was introduced. After terminal connection failure, this manager/layer
+instance remains terminal; retrying fs.watch on it is not recovery. Reconcile and
+rebuild the layer in a new scope. Local consumer-only loss need not kill the
+connection. Watch options and the v1 marker remain unchanged.
+
+Repair verification: `bun run typecheck` and `bun run build` passed;
+`WATCHMAN_TEST_BINARY=/usr/local/bin/watchman-facebook
+WATCH_TEST_DIRECTORY=/home/rektide/tmp-opencode bun run test` passed **20 tests,
+0 failures**. Includes the real owned private daemon lifecycle test, delayed B
+acknowledgement beyond its cleanup wire timeout while A remains live, no B hints,
+late B unsubscribe, cached-acquisition sibling survival, unsent cancellation with
+queue-capacity reuse, and silent-wire deadline after caller interruption.
+
 Commits: gate `c6f11e13`; package baseline `8a5313d4`.
 Plus gate `ebdc5af0`; native baseline `481abfcc`.
 

@@ -27,15 +27,23 @@ export interface ConnectionOptions {
   readonly maxBufferedEvents?: number
 }
 
+interface Command {
+  readonly command: ReadonlyArray<unknown>
+  readonly key: string
+  readonly value: string | undefined
+  readonly transmitted: () => void
+  readonly resolve: (reply: Reply) => void
+  readonly reject: (error: Error) => void
+}
+
 /** One scoped socket, one outstanding wire command, bounded queued commands. */
 export class Connection {
   readonly listeners = new Map<string, { push: (reply: Reply) => void; fail: (error: Error) => void }>()
   private socket: Socket | undefined
   private buffer = Buffer.alloc(0)
   private terminal: Error | undefined
-  private pending: { key: string; value: string | undefined; resolve: (reply: Reply) => void; reject: (error: Error) => void } | undefined
-  private tail: Promise<unknown> = Promise.resolve()
-  private queued = 0
+  private pending: Command | undefined
+  private queue: Array<Command> = []
 
   constructor(readonly options: ConnectionOptions) {}
 
@@ -62,6 +70,8 @@ export class Connection {
     this.terminal = error
     this.pending?.reject(error)
     this.pending = undefined
+    for (const command of this.queue) command.reject(error)
+    this.queue = []
     for (const listener of this.listeners.values()) listener.fail(error)
     this.listeners.clear()
     this.buffer = Buffer.alloc(0)
@@ -71,25 +81,51 @@ export class Connection {
   check(): void { if (this.terminal) throw this.terminal }
   close(): void { this.fail(new Error("Watchman connection scope closed")) }
 
-  command(command: ReadonlyArray<unknown>, key: string, value: string | undefined, signal: AbortSignal, timeout = this.options.requestTimeoutMs ?? 3000): Promise<Reply> {
-    if (++this.queued > (this.options.maxPendingCommands ?? 128)) {
-      this.queued--
+  command(command: ReadonlyArray<unknown>, key: string, value: string | undefined, signal: AbortSignal, timeout = this.options.requestTimeoutMs ?? 3000, queueTimeout = timeout): Promise<Reply> {
+    if (signal.aborted) return Promise.reject(new Error("Watchman command interrupted before transmission"))
+    if (this.terminal) return Promise.reject(this.terminal)
+    if (this.queue.length + (this.pending ? 1 : 0) >= (this.options.maxPendingCommands ?? 128)) {
       this.fail(new Error("Watchman command queue overflow"))
       return Promise.reject(this.terminal)
     }
-    const abort = () => this.fail(new Error("Watchman command interrupted; response ownership lost"))
-    signal.addEventListener("abort", abort, { once: true })
-    const timer = setTimeout(() => this.fail(new Error("Watchman request timeout")), timeout)
-    const result = this.tail.then(() => {
-      this.check()
-      if (signal.aborted) { abort(); this.check() }
-      return new Promise<Reply>((resolve, reject) => {
-        this.pending = { key, value, resolve, reject }
-        this.socket?.write(JSON.stringify(command) + "\n", (error) => { if (error) this.fail(error) })
-      })
-    }).finally(() => { this.queued--; clearTimeout(timer); signal.removeEventListener("abort", abort) })
-    this.tail = result.catch(() => undefined)
-    return result
+    return new Promise<Reply>((resolve, reject) => {
+      let timer = setTimeout(() => this.fail(new Error("Watchman request timeout")), queueTimeout)
+      const cleanup = () => { clearTimeout(timer); signal.removeEventListener("abort", abort) }
+      const request: Command = {
+        command, key, value,
+        transmitted: () => {
+          if (queueTimeout === timeout) return
+          clearTimeout(timer)
+          timer = setTimeout(() => this.fail(new Error("Watchman request timeout")), timeout)
+        },
+        resolve: (reply) => { cleanup(); resolve(reply) },
+        reject: (error) => { cleanup(); reject(error) }
+      }
+      const abort = () => {
+        const error = new Error("Watchman command caller interrupted")
+        if (this.pending === request) {
+          // Abandon only the caller. Retain wire ownership/deadline until the
+          // reply settles, so a late subscribe can be followed by unsubscribe.
+          signal.removeEventListener("abort", abort)
+          reject(error)
+          return
+        }
+        this.queue = this.queue.filter((queued) => queued !== request)
+        request.reject(error)
+      }
+      signal.addEventListener("abort", abort, { once: true })
+      this.queue.push(request)
+      this.sendNext()
+    })
+  }
+
+  private sendNext(): void {
+    if (this.terminal || this.pending) return
+    const request = this.queue.shift()
+    if (!request) return
+    this.pending = request
+    request.transmitted()
+    this.socket?.write(JSON.stringify(request.command) + "\n", (error) => { if (error) this.fail(error) })
   }
 
   private receive(chunk: Buffer): void {
@@ -113,13 +149,14 @@ export class Connection {
         }
         const pending = this.pending
         if (!pending) { this.fail(new Error("Watchman unsolicited response")); return }
-        if (reply.error) { this.pending = undefined; pending.reject(new Error(reply.error)); continue }
+        if (reply.error) { this.pending = undefined; pending.reject(new Error(reply.error)); this.sendNext(); continue }
         const decoded = Reflect.get(reply, pending.key)
         if (typeof decoded !== "string" || (pending.value !== undefined && decoded !== pending.value)) {
           this.fail(new Error(`Watchman mismatched ${pending.key} response`)); return
         }
         this.pending = undefined
         pending.resolve(reply)
+        this.sendNext()
       } catch (error) { this.fail(error instanceof Error ? error : new Error(String(error))) }
     }
   }

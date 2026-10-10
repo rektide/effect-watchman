@@ -39,6 +39,9 @@ const program = Effect.gen(function*() {
 Streams emit ordinary Create/Update/Remove hints. Known completion fails with
 PlatformError/UnexpectedEof; failures propagate. Reconcile before reopening after
 loss. No fake root update, readiness/cursor/resync guarantee or native fallback.
+After terminal **connection** failure, the existing layer's manager stays terminal:
+rerunning `fs.watch` on that instance cannot repair it. Rebuild the layer in a new
+scope before watching again; there is no automatic reconnect.
 Ordinary Effect consumers and non-watch methods remain usable. Plus's checked
 accessor is structurally interoperable but no Plus dependency is installed.
 
@@ -49,14 +52,19 @@ project acquisition is cached; daemon roots are shared, but overlapping subscrip
 are not merged. Closing a consumer unsubscribes it; closing the layer destroys its
 socket. Daemon-owned root watches are not deleted. Ignores are userland filters.
 
-Defaults: connect/request 3000ms, cleanup 500ms, JSON frame 1MiB, 128 queued
+Defaults: connect/request 3000ms, cleanup 500ms, JSON frame 1MiB, 128 active/queued
 commands, 1024 buffered events per consumer. `Options` exposes corresponding
 `connectTimeoutMs`, `requestTimeoutMs`, `cleanupTimeoutMs`, `maxFrameBytes`,
 `maxPendingCommands`, `maxBufferedEvents`; all must be positive finite integers.
 Disconnect, canceled subscription, fresh history, malformed/mismatched replies,
-deadline expiry and local overflow fail visibly. Cancellation of a wire command
-closes the connection conservatively, since reply ownership would otherwise be
-ambiguous. There is no transparent retry, discovery, autospawn, catch-up API,
+deadline expiry and local overflow fail visibly. Canceling an unsent command
+removes only that request. Canceling a transmitted command interrupts its caller
+but retains the wire reply owner/deadline; late attachment acknowledgements are
+followed by scoped unsubscribe without disrupting healthy siblings. Cleanup may
+wait up to request + cleanup timeout in the queue, then has its own cleanup
+timeout after transmission; silence/corruption can still terminate the shared
+connection. Cached project acquisition is manager-owned, not tied to the first
+requester's lifetime. There is no transparent retry, discovery, autospawn, catch-up API,
 attachment-readiness API, symlink traversal or topology-replacement guarantee.
 Daemon `ignore_dirs` / `ignore_vcs` still constrain coverage.
 
