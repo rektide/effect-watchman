@@ -7,13 +7,51 @@ Do not restore that design as a constraint.
 
 ## Current implementation
 
+### Glob integration receipt — current v2
+
+Both checked accessors now require **`~effect-watch/options/v2`** and reject
+missing/literal-only v1 markers. Exact runtime dependency **minimatch 10.0.3**;
+literal subtrees and whole-path globs compile once per consumed subscription.
+See [IGNORE.md](IGNORE.md) for exact syntax, anchoring, malformed-pattern and
+escape policy. OpenCode's ConfigWatch ignore list is supported. Filtering is
+userland/path-only and preserves deletion selection without stat/exists.
+Identical cases run through native Plus and this real isolated stock backend.
+Connection, backend lease and sibling cancellation behavior are unchanged.
+
+### Integration caveats (current)
+
+- Initially missing targets fail; `followReplacements` requires an existing file.
+  Atomic replacement of that lexical file is covered while its parent remains
+  watched. Parent/root/ancestor replacement has **no detection/recovery guarantee**;
+  known daemon cancellation/loss fails rather than fabricating a root Update.
+- No readiness, initial inventory, catch-up or reconnect API. Terminal connection
+  failure requires **rebuilding the Layer in a new scope**; retrying watches on
+  the existing owner does not repair it. Reconcile before reopening after loss.
+- No recursive symlink traversal or writes-through-file-symlink following promise.
+  Canonical directory routing preserves logical paths, not arbitrary symlink topology.
+- Daemon ignore_dirs/ignore_vcs constrain coverage. Limits/overflow are explicit;
+  userland ignores do not reduce transport delivery pressure. Native callback
+  setup/null-name/buffering limitations still apply if the application also uses
+  native Plus; no end-to-end bound is promised there.
+- No gitignore/Parcel equivalence. Reusing a backend Layer shares its connection
+  and cached project acquisition, not merged overlapping subscriptions. Roots
+  remain daemon-owned. No broader resource-sharing guarantee is introduced.
+
+Final verification: `bun run typecheck` and `bun run build` passed in both repos.
+`WATCHMAN_TEST_BINARY=/usr/local/bin/watchman-facebook
+WATCH_TEST_DIRECTORY=/home/rektide/tmp-opencode bun run test`: **24 passed** here,
+including the private stock daemon; Plus native suite: **23 passed**. Focused
+POSIX/Windows normalization, validation and file-anchor checks also passed.
+Older receipts below are historical; this section supersedes their v1/no-glob
+statements.
+
 `import { Watchman } from "effect-watchman"` exposes built ESM/declarations:
 
 - `fromBackend`: Layer capturing Effect FileSystem, Path and WatchBackend,
   replacing only watch and **never calling captured fs.watch**.
 - `make(fs, path, backend)`: pure direct backend composition.
 - `fileSystem`: checked enhanced typed view returning the same object at Effect's
-  FileSystem key. Ordinary watch syntax with `recursive`, literal subtree
+  FileSystem key. Ordinary watch syntax with `recursive`, literal subtree/glob
   `ignore`, and existing-file `followReplacements` options.
 - Explicit failure on declined registration, stream completion and errors.
   No native fallback, fabricated root Update or transparent retry through loss.
@@ -58,7 +96,7 @@ merged-overlap subscription optimization, reconnect, portable cursors, discovery
 autospawn or daemon expression pushdown. Root watches outlive the client socket
 because the daemon owns them; only named subscriptions and the client connection
 are disposed. Any further topology/catch-up/marker evolution belongs to a separate
-architecture decision, not this completed v1 stage. Stop here for parent review.
+architecture decision, not this completed daemon stage. Stop here for parent review.
 
 ## Focused cancellation repair
 
@@ -168,7 +206,7 @@ repeat read-only quietness against each supported pinned daemon.
 Review before expanding: richer direct manager-to-watch seam versus ordinary
 WatchBackend, capability marker/version evolution, root replacement topology,
 continuity/catch-up semantics, bounded delivery and optional coherent inventory.
-No arbitrary glob/Git-ignore equivalence, operation journal, exactly-once delivery,
+No Git-ignore equivalence, operation journal, exactly-once delivery,
 rename identity, atomic content snapshot, recursive symlink traversal, portable
 cursors, overlap optimizer, daemon autodiscovery or autospawn is promised.
 Respect root ignore_dirs/ignore_vcs coverage; do not rewrite daemon configuration.

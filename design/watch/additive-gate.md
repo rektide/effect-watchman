@@ -18,7 +18,8 @@ also passed; this is not evidence of a working Watchman transport.
 Choose an explicit checked typed filesystem view over global module augmentation.
 The view returns the same enhanced object stored at Effect's `FileSystem` key.
 Ordinary consumers and methods stay unchanged. Providers advertise the versioned
-structural marker `~effect-watch/options/v1`; an unenhanced filesystem is rejected
+structural marker `~effect-watch/options/v2` (evolved from literal-only v1;
+see [current ignore contract](../../IGNORE.md)); an unenhanced filesystem is rejected
 with `PlatformError/BadArgument`. No separate observation service is required.
 
 Baseline now implemented: Watchman `8a5313d4`, Plus `481abfcc`. Typechecks and

@@ -65,7 +65,7 @@ test("invalid requests, declined watches, completion and continuity errors fail 
     const path = yield* Path.Path
     const target = yield* temporary(fs)
     const declined = Watchman.make(fs, path, { register: () => Option.none() })
-    for (const options of [{}, { ignore: ["../outside"] }, { followReplacements: true }]) {
+    for (const options of [{}, { ignore: ["../outside"] }, { ignore: ["!keep"] }, { ignore: ["{..,safe}/x"] }, { followReplacements: true }]) {
       const result = yield* declined.watch(target, options).pipe(Stream.runDrain, Effect.result)
       expect(result._tag).toBe("Failure")
       if (result._tag === "Failure") expect(result.failure.reason._tag).toBe("BadArgument")
@@ -79,6 +79,28 @@ test("invalid requests, declined watches, completion and continuity errors fail 
     const failure = yield* failed.watch(target).pipe(Stream.runDrain, Effect.result)
     expect(failure._tag).toBe("Failure")
     if (failure._tag === "Failure") expect(failure.failure).toBe(error)
+  })).pipe(Effect.provide(base)))
+})
+
+test("file ignores are parent-relative with and without followReplacements", async () => {
+  await Effect.runPromise(Effect.scoped(Effect.gen(function*() {
+    const fs = yield* FileSystem.FileSystem
+    const path = yield* Path.Path
+    const directory = yield* temporary(fs)
+    const target = directory + "/config.log"
+    yield* fs.writeFileString(target, "before")
+    const watched = Watchman.make(fs, path, { register: () => Option.some(Stream.fromArray<FileSystem.WatchEvent>([
+      { _tag: "Remove", path: "config.log" }, { _tag: "Update", path: target }
+    ])) })
+    for (const followReplacements of [false, true]) {
+      const events: Array<FileSystem.WatchEvent> = []
+      const result = yield* watched.watch(target, { ignore: ["**/*.log"], followReplacements }).pipe(
+        Stream.runForEach((event) => Effect.sync(() => events.push(event))), Effect.result
+      )
+      expect(events).toEqual([])
+      expect(result._tag).toBe("Failure")
+      if (result._tag === "Failure") expect(result.failure.reason._tag).toBe("UnexpectedEof")
+    }
   })).pipe(Effect.provide(base)))
 })
 
@@ -145,4 +167,14 @@ test("unenhanced filesystem is not silently accepted", async () => {
   const result = await Effect.runPromise(Watchman.fileSystem.pipe(Effect.result, Effect.provide(base)))
   expect(result._tag).toBe("Failure")
   if (result._tag === "Failure") expect(result.failure.reason._tag).toBe("BadArgument")
+})
+
+test("v1 capability is rejected rather than accepting literal-only ignores", async () => {
+  await Effect.runPromise(Effect.gen(function*() {
+    const original = yield* FileSystem.FileSystem
+    const fs = { ...original, "~effect-watch/options/v1": true }
+    expect(Watchman.supports(fs)).toBe(false)
+    const result = yield* Watchman.fileSystem.pipe(Effect.provideService(FileSystem.FileSystem, fs), Effect.result)
+    expect(result._tag).toBe("Failure")
+  }).pipe(Effect.provide(base)))
 })

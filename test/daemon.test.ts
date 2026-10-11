@@ -2,10 +2,11 @@ import { expect, test } from "bun:test"
 import { spawn } from "node:child_process"
 import { existsSync } from "node:fs"
 import { mkdir, mkdtemp, readFile, rename, rm, symlink, writeFile, unlink } from "node:fs/promises"
-import { join } from "node:path"
+import { dirname, join } from "node:path"
 import { NodeFileSystem, NodePath } from "@effect/platform-node"
 import { Effect, Fiber, FileSystem, Layer, Stream } from "effect"
 import { Watchman } from "../effect-watchman.js"
+import { cases, ignores } from "./ignore-cases.js"
 
 const binary = process.env.WATCHMAN_TEST_BINARY
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
@@ -22,10 +23,16 @@ test.skipIf(!binary)("private stock daemon: public backend and enhanced fs.watch
   const root = join(scratch, "root")
   const socketPath = join(scratch, "daemon.sock")
   await mkdir(root)
-  await writeFile(join(root, ".watchmanconfig"), "{}")
+  // Fixture-owned coverage: do not let daemon defaults mask userland .git tests.
+  await writeFile(join(root, ".watchmanconfig"), JSON.stringify({ ignore_vcs: [] }))
   await mkdir(join(root, "nested"))
   await mkdir(join(root, "ignored"))
   await writeFile(join(root, "config"), "original")
+  const globRoot = join(root, "nested", "globs")
+  for (const [name] of cases) {
+    await mkdir(dirname(join(globRoot, name)), { recursive: true })
+    await writeFile(join(globRoot, name), "before")
+  }
   const alias = join(scratch, "logical-alias")
   await symlink(root, alias)
   const env = { ...process.env }
@@ -44,8 +51,12 @@ test.skipIf(!binary)("private stock daemon: public backend and enhanced fs.watch
     const ordinary: Array<FileSystem.WatchEvent> = []
     const file: Array<FileSystem.WatchEvent> = []
     const logical: Array<FileSystem.WatchEvent> = []
+    const globAudit: Array<FileSystem.WatchEvent> = []
+    const globFiltered: Array<FileSystem.WatchEvent> = []
     await Effect.runPromise(Effect.scoped(Effect.gen(function*() {
       const fs = yield* Watchman.fileSystem
+      yield* fs.watch(globRoot, { recursive: true }).pipe(Stream.runForEach((event) => Effect.sync(() => globAudit.push(event))), Effect.forkScoped)
+      yield* fs.watch(globRoot, { recursive: true, ignore: ignores }).pipe(Stream.runForEach((event) => Effect.sync(() => globFiltered.push(event))), Effect.forkScoped)
       const first = yield* fs.watch(root, { recursive: true, ignore: ["ignored"] }).pipe(Stream.runForEach((event) => Effect.sync(() => recursive.push(event))), Effect.forkScoped)
       yield* fs.watch(root).pipe(Stream.runForEach((event) => Effect.sync(() => direct.push(event))), Effect.forkScoped)
       yield* fs.watch(join(root, "config"), { followReplacements: true }).pipe(Stream.runForEach((event) => Effect.sync(() => stable.push(event))), Effect.forkScoped)
@@ -61,6 +72,17 @@ test.skipIf(!binary)("private stock daemon: public backend and enhanced fs.watch
       expect(direct).toEqual([])
       expect(stable).toEqual([])
       yield* Effect.promise(async () => {
+        for (const [name, included] of cases) {
+          const target = join(globRoot, name)
+          await writeFile(target, "after")
+          await until(() => globAudit.some((event) => event.path === target && event._tag !== "Remove"))
+          if (included) await until(() => globFiltered.some((event) => event.path === target && event._tag !== "Remove"))
+          await unlink(target)
+          await until(() => globAudit.some((event) => event.path === target && event._tag === "Remove"))
+          if (included) await until(() => globFiltered.some((event) => event.path === target && event._tag === "Remove"))
+        }
+        await pause(100)
+        for (const [name, included] of cases) expect(globFiltered.some((event) => event.path === join(globRoot, name))).toBe(included)
         await writeFile(join(root, "created"), "one")
         await until(() => recursive.some((event) => event._tag === "Create" && event.path === join(root, "created")))
         await until(() => logical.some((event) => event._tag === "Create" && event.path === join(alias, "created")))

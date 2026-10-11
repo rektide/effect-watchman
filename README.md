@@ -15,7 +15,7 @@ const program = Effect.gen(function*() {
   const fs = yield* Watchman.fileSystem
   yield* fs.watch(".", {
     recursive: true,
-    ignore: ["generated"]
+    ignore: ["node_modules", ".git", "**/{node_modules,.git}/**", "**/*.log"]
   }).pipe(Stream.runForEach((event) => Effect.log(event)))
 }).pipe(Effect.provide(filesystem))
 ```
@@ -27,11 +27,14 @@ const program = Effect.gen(function*() {
 - `fromBackend`: capture one provided Effect WatchBackend and base filesystem/
   Path; replace only watch. It never calls native watch; backend `None` fails.
 - `fileSystem`: checked typed view of the same Effect filesystem object; absent
-  enhancement support fails rather than silently ignoring options.
+  `~effect-watch/options/v2: true` fails rather than silently ignoring options;
+  the older literal-only v1 marker is rejected.
 - `make(fs, path, backend)`: explicit direct construction/testing seam.
-- `ignore`: literal relative paths/subtrees (not globs), directory-relative for
-  directory watches, parent-relative for files. Includes dotfiles, case-sensitive;
-  trailing separators normalize; absolute/empty/escaping paths fail.
+- `ignore`: relative literal subtrees or whole-path globs, compiled once with
+  **minimatch 10.0.3**. Supports globstar, `*`, `?`, braces, and dotfiles; filtering
+  is path-only, including deletes. No Git-ignore/reinclude semantics. Absolute,
+  empty, parent-segment and leading-negation patterns fail. See the complete
+  [v2 ignore contract](IGNORE.md) for anchoring, escaping and malformed patterns.
 - `followReplacements: true`: existing file parent-anchor, filter basename;
   parent/root replacement and missing targets are not supported.
   It watches the lexical entry, not writes through symbolic links to a referent.

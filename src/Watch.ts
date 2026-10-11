@@ -2,13 +2,15 @@ export * as Watchman from "./Watch.js"
 
 import { Effect, FileSystem, Layer, Option, Path, PlatformError, Predicate, Stream } from "effect"
 import { backendLayer, type Options } from "./Backend.js"
+import { compileIgnore } from "./Ignore.js"
 
 export { backendLayer, type Options } from "./Backend.js"
 
 /** Structural contract shared with Watch Plus, without a runtime dependency. */
-export const TypeId = "~effect-watch/options/v1"
+export const TypeId = "~effect-watch/options/v2"
 
 export interface WatchOptions extends FileSystem.WatchOptions {
+  /** Relative literal subtrees or exact-path globs; see README for syntax. */
   readonly ignore?: ReadonlyArray<string> | undefined
   readonly followReplacements?: boolean | undefined
 }
@@ -39,12 +41,10 @@ export function make(fs: FileSystem.FileSystem, path: Path.Path, backend: FileSy
     [TypeId]: true,
     watch(target, options) {
       return Stream.unwrap(Effect.gen(function*() {
-        const excluded = (options?.ignore ?? []).map((name) => path.relative(".", name))
-        if (options?.ignore?.some((name) => path.isAbsolute(name)) || excluded.some((name) => name === "" || name === ".." || name.startsWith(".." + path.sep))) {
-          return yield* Effect.fail(PlatformError.badArgument({
-            module: "Watchman", method: "watch", description: "ignore paths must be nonempty relative paths within the watch directory"
-          }))
-        }
+        const excluded = yield* Effect.try({
+          try: () => compileIgnore(options?.ignore ?? [], path),
+          catch: (cause) => PlatformError.badArgument({ module: "Watchman", method: "watch", description: String(cause) })
+        })
         const info = yield* fs.stat(target)
         if (options?.followReplacements && info.type !== "File") {
           return yield* Effect.fail(PlatformError.badArgument({
@@ -64,7 +64,7 @@ export function make(fs: FileSystem.FileSystem, path: Path.Path, backend: FileSy
           Stream.filter((event) => {
             const relative = path.relative(directory, path.resolve(directory, event.path))
             return (!options?.followReplacements || relative === path.basename(target)) &&
-              !excluded.some((name) => relative === name || relative.startsWith(name + path.sep))
+              !excluded(relative)
           }),
           Stream.concat(Stream.fail(PlatformError.systemError({
             module: "Watchman", method: "watch", _tag: "UnexpectedEof", pathOrDescriptor: target,

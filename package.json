@@ -5,10 +5,13 @@
 	"main": "./dist/effect-watchman.js",
 	"types": "./dist/effect-watchman.d.ts",
 	"exports": {
-		".": { "types": "./dist/effect-watchman.d.ts", "default": "./dist/effect-watchman.js" },
+		".": {
+			"types": "./dist/effect-watchman.d.ts",
+			"default": "./dist/effect-watchman.js"
+		},
 		"./package.json": "./package.json"
 	},
-	"files": ["dist", "README.md"],
+	"files": ["dist", "README.md", "IGNORE.md"],
 	"sideEffects": false,
 	"scripts": {
 		"build": "tsgo -p tsconfig.build.json",
@@ -16,7 +19,9 @@
 		"test": "bun test ./test",
 		"test:daemon": "bun test ./test/daemon.test.ts"
 	},
-	"peerDependencies": { "effect": "4.0.1" },
+	"peerDependencies": {
+		"effect": "4.0.1"
+	},
 	"devDependencies": {
 		"effect": "4.0.1",
 		"@effect/platform-node": "4.0.1",
@@ -36,5 +41,8 @@
 	"bugs": {
 		"url": "https://github.com/rektide/effect-watchman/issues"
 	},
-	"homepage": "https://github.com/rektide/effect-watchman#readme"
+	"homepage": "https://github.com/rektide/effect-watchman#readme",
+	"dependencies": {
+		"minimatch": "10.0.3"
+	}
 }
