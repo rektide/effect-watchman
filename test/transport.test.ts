@@ -76,6 +76,30 @@ test("public socket route filters cookie crossfire by default and permits explic
   })
 })
 
+test("socket-configured instance ignores remain active when defaults are disabled", async () => {
+  await fixture(async (peer) => {
+    await Effect.runPromise(Effect.scoped(Effect.gen(function*() {
+      const fs = yield* Watchman.fileSystem
+      const result = yield* fs.watch(peer.directory, { recursive: true, ignore: ["caller"] }).pipe(Stream.take(2), Stream.runCollect)
+      expect(result.map((event) => event.path)).toEqual([
+        join(peer.directory, "nested/.watchman-cookie-visible"), join(peer.directory, "keep")
+      ])
+    })).pipe(Effect.provide(Watchman.layer({
+      socketPath: peer.socketPath, ignore: ["instance"], defaultIgnores: false
+    }).pipe(Layer.provide(Layer.mergeAll(NodeFileSystem.layer, NodePath.layer))))))
+  }, (command, socket, directory) => {
+    common(command, socket, directory)
+    if (command[0] !== "subscribe") return
+    reply(socket, { subscribe: command[2] })
+    reply(socket, { subscription: command[2], files: [
+      { name: "instance/file", exists: true },
+      { name: "caller/file", exists: false },
+      { name: "nested/.watchman-cookie-visible", exists: true, new: true },
+      { name: "keep", exists: true }
+    ] })
+  })
+})
+
 test("interrupting delayed attach B preserves A and cleans late B acknowledgement", async () => {
   await fixture(async (peer) => {
     const a: Array<string> = []
