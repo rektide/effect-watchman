@@ -8,6 +8,32 @@ const temporary = (fs: FileSystem.FileSystem) => fs.makeTempDirectoryScoped({
   directory: process.env.WATCH_TEST_DIRECTORY, prefix: "watchman-seam-"
 })
 
+test("cookie defaults combine with instance and per-watch ignores, and can be disabled", async () => {
+  await Effect.runPromise(Effect.scoped(Effect.gen(function*() {
+    const fs = yield* FileSystem.FileSystem
+    const path = yield* Path.Path
+    const target = yield* temporary(fs)
+    const watched = Watchman.make(fs, path, { register: () => Option.some(Stream.fromArray<FileSystem.WatchEvent>([
+      { _tag: "Create", path: ".watchman-cookie-root" },
+      { _tag: "Remove", path: "nested/.watchman-cookie-deleted" },
+      { _tag: "Update", path: "nested/.watchman-cookie-dir/file" },
+      { _tag: "Update", path: "instance/hidden" },
+      { _tag: "Remove", path: "caller/deleted" },
+      { _tag: "Update", path: "keep" }
+    ])) }, { ignore: ["instance"] })
+    const filtered = yield* watched.watch(target, { ignore: ["caller"] }).pipe(Stream.take(1), Stream.runCollect)
+    expect(filtered.map((event) => event.path)).toEqual(["keep"])
+    const raw = yield* watched.watch(target, { defaultIgnores: false, ignore: ["caller"] }).pipe(Stream.take(4), Stream.runCollect)
+    expect(raw.map((event) => event.path)).toEqual([
+      ".watchman-cookie-root", "nested/.watchman-cookie-deleted", "nested/.watchman-cookie-dir/file", "keep"
+    ])
+    const invalid = Watchman.make(fs, path, { register: () => Option.some(Stream.empty) }, { ignore: ["../invalid"] })
+    const result = yield* invalid.watch(target).pipe(Stream.runDrain, Effect.result)
+    expect(result._tag).toBe("Failure")
+    if (result._tag === "Failure") expect(result.failure.reason._tag).toBe("BadArgument")
+  })).pipe(Effect.provide(base)))
+})
+
 test("independent richer watch options never invoke fs.watch; ordinary methods remain native", async () => {
   await Effect.runPromise(Effect.scoped(Effect.gen(function*() {
     const original = yield* FileSystem.FileSystem

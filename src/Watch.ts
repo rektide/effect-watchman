@@ -1,15 +1,18 @@
 export * as Watchman from "./Watch.js"
 
 import { Effect, FileSystem, Layer, Option, Path, PlatformError, Predicate, Stream } from "effect"
-import { backendLayer, type Options } from "./Backend.js"
-import { compileIgnore } from "./Ignore.js"
+import { backendLayer } from "./Backend.js"
+import type { ConnectionOptions } from "./Connection.js"
+import { compileIgnore, resolveIgnore, type IgnoreOptions } from "./Ignore.js"
 
-export { backendLayer, type Options } from "./Backend.js"
+export { backendLayer } from "./Backend.js"
+export { defaultIgnores, resolveIgnore, type IgnoreOptions } from "./Ignore.js"
+export type Options = ConnectionOptions & IgnoreOptions
 
 /** Structural contract shared with Watch Plus, without a runtime dependency. */
 export const TypeId = "~effect-watch/options/v2"
 
-export interface WatchOptions extends FileSystem.WatchOptions {
+export interface WatchOptions extends FileSystem.WatchOptions, IgnoreOptions {
   /** Relative literal subtrees or exact-path globs; see README for syntax. */
   readonly ignore?: ReadonlyArray<string> | undefined
   readonly followReplacements?: boolean | undefined
@@ -35,14 +38,14 @@ export const fileSystem = Effect.flatMap(FileSystem.FileSystem, (fs) => supports
  * decorator. The backend is captured once, not constructed for each stream.
  * The socket-configured backendLayer supplies the shared scoped daemon manager.
  */
-export function make(fs: FileSystem.FileSystem, path: Path.Path, backend: FileSystem.WatchBackend["Service"]): EnhancedFileSystem {
+export function make(fs: FileSystem.FileSystem, path: Path.Path, backend: FileSystem.WatchBackend["Service"], instance?: IgnoreOptions): EnhancedFileSystem {
   return {
     ...fs,
     [TypeId]: true,
     watch(target, options) {
       return Stream.unwrap(Effect.gen(function*() {
         const excluded = yield* Effect.try({
-          try: () => compileIgnore(options?.ignore ?? [], path),
+          try: () => compileIgnore(resolveIgnore(options, instance), path),
           catch: (cause) => PlatformError.badArgument({ module: "Watchman", method: "watch", description: String(cause) })
         })
         const info = yield* fs.stat(target)
@@ -77,12 +80,18 @@ export function make(fs: FileSystem.FileSystem, path: Path.Path, backend: FileSy
 }
 
 /** Independent of Watch Plus. Provide one backend plus filesystem/Path services. */
-export const fromBackend = Layer.effect(FileSystem.FileSystem, Effect.gen(function*() {
+export const configured = (options?: IgnoreOptions) => Layer.effect(FileSystem.FileSystem, Effect.gen(function*() {
   const fs = yield* FileSystem.FileSystem
   const path = yield* Path.Path
   const backend = yield* FileSystem.WatchBackend
-  return make(fs, path, backend)
+  return make(fs, path, backend, options)
 }))
 
+export const fromBackend = configured()
+
 /** Explicit socket-configured enhanced filesystem; requires base FileSystem and Path. */
-export const layer = (options: Options) => fromBackend.pipe(Layer.provide(backendLayer(options)))
+export const layer = (options: Options) => {
+  // Enhanced policy owns filtering so individual watches can explicitly opt out.
+  const { ignore, ...backend } = options
+  return configured(options).pipe(Layer.provide(backendLayer({ ...backend, defaultIgnores: false })))
+}

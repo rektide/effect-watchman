@@ -30,11 +30,23 @@ const program = Effect.gen(function*() {
   `~effect-watch/options/v2: true` fails rather than silently ignoring options;
   the older literal-only v1 marker is rejected.
 - `make(fs, path, backend)`: explicit direct construction/testing seam.
+- `make(fs, path, backend, policy)` / `configured(policy)`: instance-wide
+  `ignore` and `defaultIgnores` for the enhanced filesystem. `layer` accepts
+  these policy fields alongside socket/connection options.
 - `ignore`: relative literal subtrees or whole-path globs, compiled once with
   **minimatch 10.0.3**. Supports globstar, `*`, `?`, braces, and dotfiles; filtering
   is path-only, including deletes. No Git-ignore/reinclude semantics. Absolute,
   empty, parent-segment and leading-negation patterns fail. See the complete
   [v2 ignore contract](IGNORE.md) for anchoring, escaping and malformed patterns.
+- `defaultIgnores`: defaults to `true`. Suppresses `.watchman-cookie-*` files
+  and subtrees at any depth, including create/delete hints. Set `false` to
+  expose cookies without disabling any supplied ignores. Instance and per-watch
+  `ignore` arrays are unioned/deduplicated; the per-watch boolean overrides the
+  instance boolean. The enhanced layer applies this policy after raw daemon
+  delivery, so a per-watch opt-out is not defeated by unconditional filtering
+  deeper in the backend. Standalone `backendLayer` also accepts
+  `defaultIgnores: false`; it has no per-watch enhanced policy. Neither library
+  layer reads process environment variables or configuration files.
 - `followReplacements: true`: existing file parent-anchor, filter basename;
   parent/root replacement and missing targets are not supported.
   It watches the lexical entry, not writes through symbolic links to a referent.

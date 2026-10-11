@@ -1,6 +1,22 @@
 import { Minimatch } from "minimatch"
 import { Path } from "effect"
 
+export interface IgnoreOptions {
+  readonly ignore?: ReadonlyArray<string> | undefined
+  readonly defaultIgnores?: boolean | undefined
+}
+
+/** Cookies from other watchers are filesystem noise, including below nested roots. */
+export const defaultIgnores: ReadonlyArray<string> = ["**/.watchman-cookie-*", "**/.watchman-cookie-*/**"]
+
+export function resolveIgnore(options?: IgnoreOptions, instance?: IgnoreOptions) {
+  return [...new Set([
+    ...((options?.defaultIgnores ?? instance?.defaultIgnores) === false ? [] : defaultIgnores),
+    ...(instance?.ignore ?? []),
+    ...(options?.ignore ?? [])
+  ])]
+}
+
 /** Compiled once per consumed watch stream; matching never reads the filesystem. */
 export function compileIgnore(patterns: ReadonlyArray<string>, path: Path.Path) {
   const excluded = patterns.map((input) => {

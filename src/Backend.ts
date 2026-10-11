@@ -3,13 +3,13 @@ import { basename, dirname, isAbsolute, relative, resolve, sep } from "node:path
 import { Effect, FileSystem, Layer, Option, PlatformError, Stream } from "effect"
 import { Connection, Delivery, type ConnectionOptions, type Reply } from "./Connection.js"
 
-export type Options = ConnectionOptions
+export type Options = ConnectionOptions & { readonly defaultIgnores?: boolean | undefined }
 const failure = (cause: unknown) => PlatformError.systemError({
   module: "Watchman", method: "watch", _tag: "Unknown", description: String(cause), cause
 })
 
 export const backendLayer = (options: Options) => Layer.effect(FileSystem.WatchBackend, Effect.gen(function*() {
-  if (!options.socketPath || Object.entries(options).some(([key, value]) => key !== "socketPath" && value !== undefined &&
+  if (!options.socketPath || Object.entries(options).some(([key, value]) => key !== "socketPath" && key !== "defaultIgnores" && value !== undefined &&
     (typeof value !== "number" || !Number.isSafeInteger(value) || value <= 0))) {
     return yield* Effect.fail(PlatformError.badArgument({ module: "Watchman", method: "backendLayer", description: "socketPath and positive finite integer limits are required" }))
   }
@@ -51,7 +51,7 @@ export const backendLayer = (options: Options) => Layer.effect(FileSystem.WatchB
               for (const file of reply.files ?? []) {
                 const local = file.name
                 if (isAbsolute(local) || local === ".." || local.startsWith("../")) { delivery.fail(new Error("Watchman escaping path")); return }
-                if (local.split("/").some((part) => part.startsWith(".watchman-cookie-"))) continue
+                if (options.defaultIgnores !== false && local.split("/").some((part) => part.startsWith(".watchman-cookie-"))) continue
                 if (info.type !== "Directory" && local !== basename(target)) continue
                 if (info.type === "Directory" && !watchOptions?.recursive && local.includes("/")) continue
                 delivery.push({ _tag: !file.exists ? "Remove" : file.new ? "Create" : "Update", path: resolve(logical, local) })

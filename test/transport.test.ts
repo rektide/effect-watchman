@@ -52,6 +52,30 @@ const publicLayer = (socketPath: string, cleanupTimeoutMs = 100) => Watchman.lay
   Layer.provide(Layer.mergeAll(NodeFileSystem.layer, NodePath.layer))
 )
 
+test("public socket route filters cookie crossfire by default and permits explicit opt-out", async () => {
+  await fixture(async (peer) => {
+    await Effect.runPromise(Effect.scoped(Effect.gen(function*() {
+      const fs = yield* Watchman.fileSystem
+      const filtered = yield* fs.watch(peer.directory, { recursive: true, ignore: ["ignored"] }).pipe(Stream.take(1), Stream.runCollect)
+      expect(filtered.map((event) => event.path)).toEqual([join(peer.directory, "keep")])
+      const raw = yield* fs.watch(peer.directory, { recursive: true, ignore: ["ignored"], defaultIgnores: false }).pipe(Stream.take(3), Stream.runCollect)
+      expect(raw.map((event) => event.path)).toEqual([
+        join(peer.directory, ".watchman-cookie-root"), join(peer.directory, "nested/.watchman-cookie-nested"), join(peer.directory, "keep")
+      ])
+    })).pipe(Effect.provide(publicLayer(peer.socketPath))))
+  }, (command, socket, directory) => {
+    common(command, socket, directory)
+    if (command[0] !== "subscribe") return
+    reply(socket, { subscribe: command[2] })
+    reply(socket, { subscription: command[2], files: [
+      { name: ".watchman-cookie-root", exists: true, new: true },
+      { name: "nested/.watchman-cookie-nested", exists: false },
+      { name: "ignored/file", exists: true },
+      { name: "keep", exists: true }
+    ] })
+  })
+})
+
 test("interrupting delayed attach B preserves A and cleans late B acknowledgement", async () => {
   await fixture(async (peer) => {
     const a: Array<string> = []
