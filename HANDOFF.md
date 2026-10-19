@@ -1,4 +1,32 @@
+---
+type: Handoff
+title: Independent additive Watchman
+description: Current enumeration implementation receipt followed by preserved watch-only history.
+resource: /HANDOFF.md
+status: active
+author: GPT-6.1 Sol xhigh
+date: 2026-10-19
+sources:
+  - resource: "opencode://ses_ead2c9a29fferY0Og3JRINkhz4"
+    title: Added the current enumeration receipt without replacing earlier watch verification history
+  - resource: /ENUMERATION.md
+    title: Maintained enumeration API and limits
+---
+
 # Build handoff: independent additive Watchman
+
+## Enumeration extension — 2026-10-19
+
+`Glob.layer` and `Watchman.layerWithGlob` implement selective daemon glob queries
+and complete baselines, not merely watch-ignore globs. Exact approved-root
+acquisition, query-specific decoding, byte/deadline budgets, shared watch/query
+ownership, npm-backed traversal, explicit local coverage/symlink supplementation,
+and scanned versus checkpointed classification are implemented. See
+[the maintained API](ENUMERATION.md) and [contract checkpoint](design/watch/enumeration-contract0.sol61x.md).
+The no-inventory/no-recursive-symlink statements below apply to the preserved
+watch-only interfaces, not this new optional enumeration surface. Aligned changes,
+catch-up and automatic reconnect remain unimplemented. Earlier verification
+counts below are historical receipts, not the enumeration suite's current totals.
 
 2026-10-10, GPT-6.1 Sol. Architecture gate and executable backend seam landed.
 The user-selected additive `fs.watch(path, options)` direction supersedes the

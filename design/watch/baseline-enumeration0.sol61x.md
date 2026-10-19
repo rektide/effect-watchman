@@ -7,6 +7,8 @@ status: proposal
 author: GPT-6.1 Sol xhigh
 date: 2026-10-13
 sources:
+  - resource: "opencode://ses_ead2c9a29fferY0Og3JRINkhz4"
+    title: Added a pointer to the implemented additive enumeration slice while preserving the source-inspection proposal
   - resource: "opencode://ses_ecc383277ffey4GnptMHNf2ZPb"
     title: Architecture review of library ownership, enumeration contracts, Watchman query boundaries, and OpenCode adoption
   - resource: "opencode://ses_eccafdf67ffesc5ruV2dWuc2QE"
@@ -46,6 +48,12 @@ verification:
 ---
 
 # Additive glob backends and filesystem baselines
+
+**Implementation update, 2026-10-19:** the additive baseline slice is now implemented
+in both libraries. See the [structural contract checkpoint](enumeration-contract0.sol61x.md)
+and [maintained Watchman API](../../ENUMERATION.md). The source-inspection evidence
+and future aligned-continuity proposal below remain historical/prospective, not
+new execution evidence.
 
 ## Decision in brief
 

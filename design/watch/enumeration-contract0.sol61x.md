@@ -8,7 +8,7 @@ author: GPT-6.1 Sol xhigh
 date: 2026-10-19
 sources:
   - resource: "opencode://ses_ead2c9a29fferY0Og3JRINkhz4"
-    title: Library contract, daemon candidate planning, and explicit local supplementation design
+    title: Shared enumeration implementation, npm traversal and non-directory extension, daemon planning and explicit supplements
   - resource: /design/watch/baseline-enumeration0.sol61x.md
     title: Commissioned baseline and enumeration proposal, read fully
   - resource: /src/Enumeration.ts
@@ -37,9 +37,13 @@ No implicit watch ignores or Git ignores enter literal enumeration.
 
 The default selection is `patterns: ["**/*"]`, `kind: "all"`, `dot: false`,
 `nocase: false`, `symlinks: "literal"`, `metadata: false`, `policy: "literal"`,
-`coverage: "filesystem"`. Literal links are listed, not recursively traversed;
-file/directory kind selection uses target classification for links. Broken links
-remain all-entry candidates. Follow traversal is cycle-bounded by ancestor real
+`coverage: "filesystem"`. The glob method defaults symlinks to `glob`, while
+enumerate retains the explicit literal default. `glob` is the npm-engine-backed
+pattern-dependent default traversal mode, not never-follow. Literal links are listed, not recursively traversed;
+file/directory kind selection uses target classification for links. The added
+`non-directories` kind retains broken links/special entries while excluding real
+and target directories; strict `files` still means regular/target regular files.
+Broken links remain all-entry candidates. Follow traversal is cycle-bounded by ancestor real
 directory identities, not by globally suppressing aliases.
 
 Native and ripgrep return scanned baselines. Watchman-only daemon results return
@@ -61,6 +65,8 @@ is the explicit ripgrep search profile, unsupported elsewhere until implemented.
 - Watchman root exports `Glob` alongside `Watchman`; `Glob.layer(options)` is
   glob-only. `Watchman.layerWithGlob(options)` constructs one internal manager
   for both watch and query. `Watchman.layer(options)` remains watch-only.
+- Watchman glob options require `approvedRoots`; acquisition uses exact `watch`
+  on an approved boundary, never a potentially broader `watch-project`.
 - In either package, `Glob.fileSystem` checks the enumeration view.
 
 This checkpoint freezes Request/Entry/Baseline/Backend/GlobOptions and matching
@@ -80,3 +86,6 @@ spawner, not node child_process or an application environment singleton.
 
 The prior [enumeration proposal](baseline-enumeration0.sol61x.md#first-implementation-slice-and-next-checkpoint)
 provides the larger rationale and subsequent aligned-continuity checkpoint.
+The [verification receipt](enumeration-verification0.sol61x.md) records implemented
+revisions, real-daemon/Node/rg evidence and remaining limits; this is no longer
+only a scaffold checkpoint.

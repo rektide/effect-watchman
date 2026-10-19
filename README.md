@@ -1,7 +1,28 @@
+---
+type: Overview
+title: effect-watchman
+description: Independent Effect watching and additive approved-root glob enumeration.
+resource: /README.md
+status: active
+author: GPT-6.1 Sol xhigh
+date: 2026-10-19
+sources:
+  - resource: "opencode://ses_ead2c9a29fferY0Og3JRINkhz4"
+    title: Added the additive enumeration entrypoint and API reference; retained watch-only documentation
+  - resource: /ENUMERATION.md
+    title: Glob and baseline API details
+---
+
 # effect-watchman
 
 Independent enhanced Effect **4.0.1** filesystem watching through an explicitly
 configured Watchman Unix socket. No Watch Plus runtime or layer is required.
+
+**Glob/enumeration is additive:** use `Glob.layer({ socketPath, approvedRoots })`
+or `Watchman.layerWithGlob(...)` for shared watch/query ownership. This includes
+selective daemon queries, npm glob traversal, explicit native symlink/ignored-root
+supplements and complete baselines. The existing `Watchman.layer` stays watch-only.
+See [enumeration API and limits](ENUMERATION.md).
 
 ```ts
 import { NodeFileSystem, NodePath } from "@effect/platform-node"
