@@ -1,7 +1,9 @@
 export * as Watchman from "./Watch.js"
 
 import { Effect, FileSystem, Layer, Option, Path, PlatformError, Predicate, Stream } from "effect"
-import { backendLayer } from "./Backend.js"
+import { backendLayer, makeBackend } from "./Backend.js"
+import { Glob } from "./Glob.js"
+import { makeOwner } from "./Owner.js"
 import type { ConnectionOptions } from "./Connection.js"
 import { compileIgnore, resolveIgnore, type IgnoreOptions } from "./Ignore.js"
 
@@ -95,3 +97,13 @@ export const layer = (options: Options) => {
   const { ignore, ...backend } = options
   return configured(options).pipe(Layer.provide(backendLayer({ ...backend, defaultIgnores: false })))
 }
+
+/** One connection and exact approved-root cache for both watch and enumeration. */
+export const layerWithGlob = (options: Glob.Options & IgnoreOptions) => Layer.effect(FileSystem.FileSystem, Effect.gen(function*() {
+  const fs = yield* FileSystem.FileSystem
+  const path = yield* Path.Path
+  const { ignore, ...raw } = options
+  const owner = yield* makeOwner({ ...Glob.ownerOptions(raw), defaultIgnores: false })
+  const enhanced = make(fs, path, makeBackend(owner), options)
+  return Glob.make(enhanced, Glob.makeBackend(owner, options), () => process.cwd())
+}))
