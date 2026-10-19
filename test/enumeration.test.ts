@@ -8,11 +8,18 @@ import { NodeFileSystem, NodePath } from "@effect/platform-node"
 import { Effect, Layer } from "effect"
 import { Glob, Watchman } from "../effect-watchman.js"
 import { selection } from "../src/Selection.js"
+import { globView } from "../src/GlobView.js"
 import { patterns, populate } from "./enumeration-cases.js"
 import { inventory } from "./consumer.js"
 
 const binary = process.env.WATCHMAN_TEST_BINARY
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
+test("npm directory view retains every candidate in a wide synthetic directory", async () => {
+  const entries = Array.from({ length: 32_000 }, (_, index) => ({ path: `wide/file-${index}.ts`, type: "File" as const }))
+  const result = await globView({ root: "/synthetic-daemon-view", patterns: ["wide/*.ts"], symlinks: "glob" }, entries, new AbortController().signal)
+  expect(new Set(result.map((entry) => entry.path))).toEqual(new Set(entries.map((entry) => entry.path)))
+})
 
 test("planner retains selective simple globs and widens extglobs/classes without losing prefixes", () => {
   expect(selection({ root: "/root", patterns: ["src/**/*.ts"] }).candidates).toEqual(["src/**/*.ts"])

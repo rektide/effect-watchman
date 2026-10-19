@@ -8,7 +8,7 @@ author: GPT-6.1 Sol xhigh
 date: 2026-10-19
 sources:
   - resource: "opencode://ses_ead2c9a29fferY0Og3JRINkhz4"
-    title: Enumeration implementation, contract extensions, real daemon and transport verification
+    title: Enumeration implementation, real daemon verification, wide-directory review correction and explicit nodir limits
   - resource: /src/Enumeration.ts
     title: Structural consumer contract shared with independent Plus
   - resource: /src/GlobBackend.ts
@@ -86,6 +86,12 @@ to `glob`, matching npm traversal rather than promising every Node glob quirk.
 | `symlinks:"glob"` | npm's default pattern-dependent traversal, including literal symlink prefixes and its bounded globstar behavior |
 | `symlinks:"follow"` | Recursively traverse linked directories; ancestor real-directory identities stop cycles without suppressing independent aliases |
 | `metadata:true` | Request lexical `size` and `mtimeMs`; sparse metadata is not Effect File.Info or a content snapshot |
+
+`non-directories` is not an exact synonym for npm `nodir` in every link mode:
+with `follow:false` (our `symlinks:"glob"` traversal), npm can retain a literal
+directory symlink, while this kind always excludes links resolving to directories.
+Applications requiring that exact npm classification should enumerate `all` and
+apply their declared link-mode-specific selection explicitly.
 
 Names-only daemon enumeration requests name/type, not stat per regular result.
 Symlinks are locally classified for target kind. `glob` mode uses the real npm

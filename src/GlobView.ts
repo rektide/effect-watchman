@@ -56,7 +56,12 @@ export async function globView(request: Request, candidates: ReadonlyArray<Entry
   for (const entry of entries.values()) {
     if (entry.path === ".") continue
     const parent = dirname(entry.path)
-    children.set(parent, [...(children.get(parent) ?? []), entry])
+    const siblings = children.get(parent)
+    if (siblings) {
+      siblings.push(entry)
+      continue
+    }
+    children.set(parent, [entry])
   }
   const local = (name: string) => links.some((link) => name === link || name.startsWith(link + "/"))
   const nameOf = (path: string) => {

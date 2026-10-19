@@ -8,7 +8,9 @@ author: GPT-6.1 Sol xhigh
 date: 2026-10-19
 sources:
   - resource: "opencode://ses_ead2c9a29fferY0Og3JRINkhz4"
-    title: Built both libraries, corrected npm and Unicode traversal boundaries, and ran independent daemon/Node/rg verification
+    title: Built both libraries, verified daemon/Node/rg behavior and corrected reviewed wide-directory accumulation cost
+  - resource: "opencode://ses_ead831f3fffeDXzSbrmUgEARsS"
+    title: Parent review identified quadratic child-array copying and clarified npm nodir directory-link behavior
   - resource: /src/Enumeration.ts
     title: Final structural consumer contract
   - resource: /src/GlobBackend.ts
@@ -73,6 +75,28 @@ The common consumer uses only root/patterns/kind/dot/symlinks and Entry.path; it
 does not inspect provider-specific wire objects. Identical committed consumers
 live in both test/consumer.ts files. Native and rg results matched the daemon's
 declared file selection in the real Node process, not merely under Bun's shim.
+
+### Focused parent-review correction
+
+After the initial receipt above, parent review identified repeated copying of a
+directory's entire child array while building the npm candidate view. Accumulation
+now appends to the map's owned per-parent array, preserving the same entry order
+and selection semantics with linear accumulation rather than quadratic copying.
+A synthetic 32,000-child directory verifies the full name set without any elapsed
+time assertion or native filesystem walk.
+
+The parent's existing `.test-agent/parent-review/wide.ts` diagnostic was run once
+after the correction: 4k **30ms**, 8k **42ms**, 16k **70ms**, 32k **219ms**, all
+return counts verified. It ran alongside focused checks, not in an isolated
+benchmark environment; these are diagnostic observations, not timing guarantees.
+The focused enumeration/query suites passed **5 tests / 93 assertions**, including
+the private daemon; build and typecheck passed. Earlier full-suite/rerun counts
+above remain the original implementation receipt, not this correction's rerun.
+
+Both API references now explicitly distinguish `non-directories` from npm nodir
+under default (`symlinks:glob`) traversal: npm can retain a literal directory link
+with follow:false, while this kind always excludes target directories. No public
+semantics or capabilities changed in this review correction.
 
 ## Properties actually checked
 
