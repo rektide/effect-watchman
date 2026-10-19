@@ -1,46 +1,24 @@
-import { realpath } from "node:fs/promises"
 import { basename, dirname, isAbsolute, relative, resolve, sep } from "node:path"
 import { Effect, FileSystem, Layer, Option, PlatformError, Stream } from "effect"
-import { Connection, Delivery, type ConnectionOptions, type Reply } from "./Connection.js"
+import { Delivery } from "./Connection.js"
+import { failure, makeOwner, type Owner } from "./Owner.js"
 
-export type Options = ConnectionOptions & { readonly defaultIgnores?: boolean | undefined }
-const failure = (cause: unknown) => PlatformError.systemError({
-  module: "Watchman", method: "watch", _tag: "Unknown", description: String(cause), cause
-})
+export type { Options } from "./Owner.js"
+import type { Options } from "./Owner.js"
 
-export const backendLayer = (options: Options) => Layer.effect(FileSystem.WatchBackend, Effect.gen(function*() {
-  if (!options.socketPath || Object.entries(options).some(([key, value]) => key !== "socketPath" && key !== "defaultIgnores" && value !== undefined &&
-    (typeof value !== "number" || !Number.isSafeInteger(value) || value <= 0))) {
-    return yield* Effect.fail(PlatformError.badArgument({ module: "Watchman", method: "backendLayer", description: "socketPath and positive finite integer limits are required" }))
-  }
-  const connection = yield* Effect.acquireRelease(Effect.sync(() => new Connection(options)), (connection) => Effect.sync(() => connection.close()))
-  yield* Effect.tryPromise({ try: (signal) => connection.connect(signal), catch: failure })
-  const roots = new Map<string, Promise<Reply>>()
-  // Shared acquisition belongs to this scoped connection, not the first lease.
-  // Connection closure settles it; the command deadline still bounds it.
-  const projectSignal = new AbortController().signal
-  let serial = 0
+export const backendLayer = (options: Options) => Layer.effect(FileSystem.WatchBackend, Effect.map(makeOwner(options), makeBackend))
+
+export function makeBackend(owner: Owner): FileSystem.WatchBackend["Service"] {
+  const { connection, options, command } = owner
   return FileSystem.WatchBackend.of({
     register(target, info, watchOptions) {
       return Option.some(Stream.unwrap(Effect.gen(function*() {
         const logical = resolve(info.type === "Directory" ? target : dirname(target))
-        const canonical = yield* Effect.tryPromise({ try: () => realpath(logical), catch: failure })
-        const command = (args: ReadonlyArray<unknown>, key: string, value?: string, timeout?: number, queueTimeout?: number) => Effect.tryPromise({
-          try: (signal) => connection.command(args, key, value, signal, timeout, queueTimeout), catch: failure
-        })
-        const project = yield* Effect.tryPromise({ try: () => {
-          connection.check()
-          const cached = roots.get(canonical)
-          if (cached) return cached
-          const acquired = connection.command(["watch-project", canonical], "watch", undefined, projectSignal)
-          roots.set(canonical, acquired)
-          acquired.catch(() => roots.delete(canonical))
-          return acquired
-        }, catch: failure })
-        const root = project.watch
+        const project = yield* owner.project(logical)
+        const root = project.reply.watch
         if (!root) return yield* Effect.fail(failure("Watchman watch-project omitted root"))
         const boundary = yield* command(["clock", root], "clock")
-        const name = `effect-watchman-${++serial}`
+        const name = owner.nextName()
         const delivery = new Delivery<FileSystem.WatchEvent>(options.maxBufferedEvents ?? 1024)
         yield* Effect.acquireRelease(Effect.try({ try: () => {
           connection.check()
@@ -67,7 +45,7 @@ export const backendLayer = (options: Options) => Layer.effect(FileSystem.WatchB
           yield* command(["unsubscribe", root, name], "unsubscribe", name, cleanup,
             (options.requestTimeoutMs ?? 3000) + cleanup).pipe(Effect.ignore)
         }))
-        const relativeRoot = relative(root, canonical)
+        const relativeRoot = relative(root, project.canonical)
         if (relativeRoot === ".." || relativeRoot.startsWith(".." + sep)) return yield* Effect.fail(failure("Watchman root does not contain target"))
         yield* command(["subscribe", root, name, {
           since: boundary.clock, fields: ["name", "exists", "new"],
@@ -77,4 +55,4 @@ export const backendLayer = (options: Options) => Layer.effect(FileSystem.WatchB
       })))
     }
   })
-}))
+}

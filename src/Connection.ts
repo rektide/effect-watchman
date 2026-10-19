@@ -17,10 +17,28 @@ const Reply = Schema.Struct({
 })
 export type Reply = typeof Reply.Type
 
+const Envelope = Schema.Struct({ error: Schema.optional(Schema.String), subscription: Schema.optional(Schema.String), canceled: Schema.optional(Schema.Boolean) })
+export const QueryReply = Schema.Struct({
+  clock: Schema.String,
+  is_fresh_instance: Schema.optional(Schema.Boolean),
+  files: Schema.Array(Schema.Union([Schema.String, Schema.Struct({
+    name: Schema.String,
+    type: Schema.String,
+    size: Schema.optional(Schema.NullOr(Schema.Number)),
+    mtime_ms: Schema.optional(Schema.NullOr(Schema.Number))
+  })]))
+})
+export type QueryReply = typeof QueryReply.Type
+export const ConfigReply = Schema.Struct({ config: Schema.Struct({
+  ignore_dirs: Schema.optional(Schema.Array(Schema.String)),
+  ignore_vcs: Schema.optional(Schema.Array(Schema.String))
+}) })
+
 export interface ConnectionOptions {
   readonly socketPath: string
   readonly connectTimeoutMs?: number
   readonly requestTimeoutMs?: number
+  readonly queueTimeoutMs?: number
   readonly cleanupTimeoutMs?: number
   readonly maxFrameBytes?: number
   readonly maxPendingCommands?: number
@@ -29,10 +47,8 @@ export interface ConnectionOptions {
 
 interface Command {
   readonly command: ReadonlyArray<unknown>
-  readonly key: string
-  readonly value: string | undefined
   readonly transmitted: () => void
-  readonly resolve: (reply: Reply) => void
+  readonly resolve: (reply: unknown, bytes: number) => void
   readonly reject: (error: Error) => void
 }
 
@@ -81,24 +97,54 @@ export class Connection {
   check(): void { if (this.terminal) throw this.terminal }
   close(): void { this.fail(new Error("Watchman connection scope closed")) }
 
-  command(command: ReadonlyArray<unknown>, key: string, value: string | undefined, signal: AbortSignal, timeout = this.options.requestTimeoutMs ?? 3000, queueTimeout = timeout): Promise<Reply> {
+  command(command: ReadonlyArray<unknown>, key: string, value: string | undefined, signal: AbortSignal, timeout = this.options.requestTimeoutMs ?? 3000, queueTimeout = this.options.queueTimeoutMs ?? timeout): Promise<Reply> {
+    return this.request(command, signal, timeout, queueTimeout, (input) => {
+      const reply = Schema.decodeUnknownSync(Reply)(input)
+      const decoded = Reflect.get(reply, key)
+      if (typeof decoded !== "string" || (value !== undefined && decoded !== value)) throw new Error(`Watchman mismatched ${key} response`)
+      return reply
+    })
+  }
+
+  query(command: ReadonlyArray<unknown>, signal: AbortSignal, timeout: number, maxBytes: number): Promise<QueryReply> {
+    return this.request(command, signal, timeout, timeout, (input, bytes) => {
+      if (bytes > maxBytes) throw new Error("Watchman query result-byte budget exceeded")
+      return Schema.decodeUnknownSync(QueryReply)(input)
+    }, false)
+  }
+
+  config(root: string, signal: AbortSignal): Promise<typeof ConfigReply.Type> {
+    return this.request(["get-config", root], signal, this.options.requestTimeoutMs ?? 3000, this.options.requestTimeoutMs ?? 3000,
+      (input) => Schema.decodeUnknownSync(ConfigReply)(input))
+  }
+
+  private request<A>(command: ReadonlyArray<unknown>, signal: AbortSignal, timeout: number, queueTimeout: number,
+    decode: (input: unknown, bytes: number) => A, terminalDecode = true): Promise<A> {
     if (signal.aborted) return Promise.reject(new Error("Watchman command interrupted before transmission"))
     if (this.terminal) return Promise.reject(this.terminal)
     if (this.queue.length + (this.pending ? 1 : 0) >= (this.options.maxPendingCommands ?? 128)) {
       this.fail(new Error("Watchman command queue overflow"))
       return Promise.reject(this.terminal)
     }
-    return new Promise<Reply>((resolve, reject) => {
+    return new Promise<A>((resolve, reject) => {
       let timer = setTimeout(() => this.fail(new Error("Watchman request timeout")), queueTimeout)
       const cleanup = () => { clearTimeout(timer); signal.removeEventListener("abort", abort) }
       const request: Command = {
-        command, key, value,
+        command,
         transmitted: () => {
           if (queueTimeout === timeout) return
           clearTimeout(timer)
           timer = setTimeout(() => this.fail(new Error("Watchman request timeout")), timeout)
         },
-        resolve: (reply) => { cleanup(); resolve(reply) },
+        resolve: (reply, bytes) => {
+          cleanup()
+          try { resolve(decode(reply, bytes)) }
+          catch (error) {
+            const cause = error instanceof Error ? error : new Error(String(error))
+            reject(cause)
+            if (terminalDecode) this.fail(cause)
+          }
+        },
         reject: (error) => { cleanup(); reject(error) }
       }
       const abort = () => {
@@ -140,22 +186,20 @@ export class Connection {
       this.buffer = this.buffer.subarray(end + 1)
       try {
         const frame = new TextDecoder("utf-8", { fatal: true }).decode(bytes)
-        const reply = Schema.decodeUnknownSync(Schema.fromJsonString(Reply))(frame)
+        const input = Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Unknown))(frame)
+        const envelope = Schema.decodeUnknownSync(Envelope)(input)
         // Cancellation must win over ordinary unilateral subscription delivery.
-        if (reply.canceled) { this.fail(new Error("Watchman subscription canceled")); return }
-        if (reply.subscription) {
-          this.listeners.get(reply.subscription)?.push(reply)
+        if (envelope.canceled) { this.fail(new Error("Watchman subscription canceled")); return }
+        if (envelope.subscription) {
+          const reply = Schema.decodeUnknownSync(Reply)(input)
+          this.listeners.get(envelope.subscription)?.push(reply)
           continue
         }
         const pending = this.pending
         if (!pending) { this.fail(new Error("Watchman unsolicited response")); return }
-        if (reply.error) { this.pending = undefined; pending.reject(new Error(reply.error)); this.sendNext(); continue }
-        const decoded = Reflect.get(reply, pending.key)
-        if (typeof decoded !== "string" || (pending.value !== undefined && decoded !== pending.value)) {
-          this.fail(new Error(`Watchman mismatched ${pending.key} response`)); return
-        }
+        if (envelope.error) { this.pending = undefined; pending.reject(new Error(envelope.error)); this.sendNext(); continue }
         this.pending = undefined
-        pending.resolve(reply)
+        pending.resolve(input, bytes.length)
         this.sendNext()
       } catch (error) { this.fail(error instanceof Error ? error : new Error(String(error))) }
     }
