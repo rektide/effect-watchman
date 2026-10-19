@@ -1,4 +1,5 @@
 import { lstat, readdir, realpath, stat } from "node:fs/promises"
+import type { Dirent } from "node:fs"
 import { join, resolve } from "node:path"
 import type { Entry, Request } from "./Enumeration.js"
 import { selection } from "./Selection.js"
@@ -7,7 +8,8 @@ const classify = (info: Awaited<ReturnType<typeof lstat>>): Entry["type"] => inf
 
 /** Classify only links or explicitly requested metadata, not every daemon name. */
 export async function localEntry(root: string, name: string, metadata: boolean): Promise<Entry> {
-  const info = await lstat(resolve(root, name))
+  // The namespace root is a directory even when its spelling is a symlink.
+  const info = await lstat(name === "." ? root + "/." : resolve(root, name))
   const type = classify(info)
   const target = type === "SymbolicLink" ? await stat(resolve(root, name)).catch((error: NodeJS.ErrnoException) => {
     if (error.code === "ENOENT" || error.code === "ENOTDIR" || error.code === "ELOOP") return undefined
@@ -23,17 +25,19 @@ export async function localEntry(root: string, name: string, metadata: boolean):
 export async function walk(request: Request, starts: ReadonlyArray<string>, signal: AbortSignal): Promise<Array<Entry>> {
   const matcher = selection(request)
   const entries = new Map<string, Entry>()
-  const visit = async (name: string, ancestors: ReadonlySet<string>): Promise<void> => {
+  const visit = async (name: string, ancestors: ReadonlySet<string>, known?: Dirent): Promise<void> => {
     signal.throwIfAborted()
-    const entry = await localEntry(request.root, name, request.metadata ?? false)
+    const entry: Entry = known && !known.isSymbolicLink() && !request.metadata
+      ? { path: name, type: known.isDirectory() ? "Directory" : known.isFile() ? "File" : "Other" }
+      : await localEntry(request.root, name, request.metadata ?? false)
     entries.set(name, entry)
-    const directory = entry.type === "Directory" || (request.symlinks === "follow" && entry.targetType === "Directory")
+    const directory = entry.type === "Directory" || ((name === "." || request.symlinks === "follow") && entry.targetType === "Directory")
     if (!directory || !matcher.mayDescend(name)) return
     const identity = await realpath(resolve(request.root, name))
     if (ancestors.has(identity)) return
     const chain = new Set([...ancestors, identity])
-    for (const child of await readdir(resolve(request.root, name))) {
-      await visit(name === "." ? child : name + "/" + child, chain)
+    for (const child of await readdir(resolve(request.root, name), { withFileTypes: true })) {
+      await visit(name === "." ? child.name : name + "/" + child.name, chain, child)
     }
   }
   const rootIdentity = await realpath(request.root)

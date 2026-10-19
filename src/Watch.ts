@@ -3,6 +3,7 @@ export * as Watchman from "./Watch.js"
 import { Effect, FileSystem, Layer, Option, Path, PlatformError, Predicate, Stream } from "effect"
 import { backendLayer, makeBackend } from "./Backend.js"
 import { Glob } from "./Glob.js"
+import { makeGlobBackend, ownerOptions } from "./GlobBackend.js"
 import { makeOwner } from "./Owner.js"
 import type { ConnectionOptions } from "./Connection.js"
 import { compileIgnore, resolveIgnore, type IgnoreOptions } from "./Ignore.js"
@@ -103,7 +104,7 @@ export const layerWithGlob = (options: Glob.Options & IgnoreOptions) => Layer.ef
   const fs = yield* FileSystem.FileSystem
   const path = yield* Path.Path
   const { ignore, ...raw } = options
-  const owner = yield* makeOwner({ ...Glob.ownerOptions(raw), defaultIgnores: false })
+  const owner = yield* makeOwner({ ...ownerOptions(raw), defaultIgnores: false })
   const enhanced = make(fs, path, makeBackend(owner), options)
-  return Glob.make(enhanced, Glob.makeBackend(owner, options), () => process.cwd())
+  return Glob.make(enhanced, makeGlobBackend(owner, options), () => process.cwd())
 }))

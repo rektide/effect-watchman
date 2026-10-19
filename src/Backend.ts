@@ -1,5 +1,5 @@
 import { basename, dirname, isAbsolute, relative, resolve, sep } from "node:path"
-import { Effect, FileSystem, Layer, Option, PlatformError, Stream } from "effect"
+import { Effect, FileSystem, Layer, Option, Stream } from "effect"
 import { Delivery } from "./Connection.js"
 import { failure, makeOwner, type Owner } from "./Owner.js"
 

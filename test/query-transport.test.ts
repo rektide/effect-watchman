@@ -44,6 +44,7 @@ test("shared exact-root owner: canceled query retains wire ownership; siblings a
           if (mode === "hold") { pending = socket; continue }
           if (mode === "large") { send(socket, { clock: "c:1:3", files: [{ name: "x".repeat(100), type: "f" }] }); continue }
           if (mode === "bad") { send(socket, { clock: "c:1:4", files: [{ name: "bad", type: null }] }); continue }
+          if (mode === "warning") { send(socket, { clock: "c:1:4", files: [], warning: "Permission denied; subtree marked deleted" }); continue }
           send(socket, { clock: "c:1:5", files: [{ name: "kept.ts", type: "f" }] })
         }
       }
@@ -57,6 +58,8 @@ test("shared exact-root owner: canceled query retains wire ownership; siblings a
     const events: Array<string> = []
     await Effect.runPromise(Effect.scoped(Effect.gen(function*() {
       const fs = yield* Glob.fileSystem
+      expect((yield* fs.enumerate({ root, policy: "gitignore" }).pipe(Effect.result))._tag).toBe("Failure")
+      expect((yield* fs.enumerate({ root, patterns: ["../*.ts"] }).pipe(Effect.result))._tag).toBe("Failure")
       const watcher = yield* fs.watch(root, { recursive: true }).pipe(Stream.runForEach((event) => Effect.sync(() => events.push(event.path))), Effect.forkScoped)
       yield* Effect.promise(() => until(() => subscription !== undefined))
       const query = yield* fs.enumerate({ root, patterns: ["*.ts"] }).pipe(Effect.forkScoped)
@@ -72,6 +75,8 @@ test("shared exact-root owner: canceled query retains wire ownership; siblings a
       expect((yield* fs.enumerate({ root }).pipe(Effect.result))._tag).toBe("Failure")
       mode = "bad"
       expect((yield* fs.enumerate({ root }).pipe(Effect.result))._tag).toBe("Failure")
+      mode = "warning"
+      expect((yield* fs.enumerate({ root }).pipe(Effect.result))._tag).toBe("Failure")
       mode = "ok"
       const result = yield* fs.enumerate({ root, patterns: ["*.ts"] })
       expect(result.entries).toEqual([{ path: "kept.ts", type: "File" }])
@@ -80,6 +85,14 @@ test("shared exact-root owner: canceled query retains wire ownership; siblings a
       expect(sockets.size).toBe(1)
       yield* Fiber.interrupt(watcher)
     })).pipe(Effect.provide(filesystem)))
+    const invalid = await Effect.runPromise(Effect.gen(function*() {
+      const fs = yield* Glob.fileSystem
+      return yield* fs.enumerate({ root }).pipe(Effect.result)
+    }).pipe(Effect.provide(Glob.layer({ socketPath, approvedRoots: [root], queryTimeoutMs: 200,
+      querySyncTimeoutMs: 100, queryLockTimeoutMs: 100
+    }).pipe(Layer.provide(NodeFileSystem.layer)))))
+    expect(invalid._tag).toBe("Failure")
+    expect(commands.filter((command) => command[0] === "watch")).toHaveLength(1)
   } finally {
     for (const socket of sockets) socket.destroy()
     await new Promise<void>((resolve) => server.close(() => resolve()))
@@ -97,7 +110,10 @@ test("query decoder accepts name strings and rich optional/null fields without s
   ]
   const server = createServer((socket) => {
     sockets.add(socket)
-    socket.on("data", () => send(socket, replies.shift()))
+    socket.on("data", () => {
+      const response = replies.shift()
+      if (response) send(socket, response)
+    })
   })
   await new Promise<void>((resolve) => server.listen(socketPath, resolve))
   const connection = new Connection({ socketPath })
@@ -109,6 +125,8 @@ test("query decoder accepts name strings and rich optional/null fields without s
     expect(first.is_fresh_instance).toBe(true)
     const second = await connection.query(["query"], signal, 1000, 1000)
     expect(second.files).toEqual([{ name: "name.ts", type: "f", size: 12, mtime_ms: 1234 }, { name: "null", type: "l", size: null, mtime_ms: null }])
+    await expect(connection.query(["query"], signal, 50, 1000)).rejects.toThrow("timeout")
+    expect(() => connection.check()).toThrow("timeout")
   } finally {
     connection.close()
     for (const socket of sockets) socket.destroy()

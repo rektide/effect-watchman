@@ -1,20 +1,21 @@
 import { Effect, FileSystem, PlatformError, Predicate } from "effect"
+import { resolve } from "node:path"
 
 /** Coordinated structural contract; no dependency on the Plus runtime. */
 export const TypeId = "~effect-watch/enumeration/v1"
 export const CheckpointTypeId = "~effect-watch/checkpoint/v1"
 
 export interface Request {
-  /** Absolute or caller-resolved root. Returned names use '/' relative to it. */
+  /** Absolute root. Returned names use '/' relative to it. */
   readonly root: string
   readonly patterns?: ReadonlyArray<string> | undefined
   /** Exact pathname globs, not gitignore rules. A directory match prunes it. */
   readonly exclude?: ReadonlyArray<string> | undefined
   readonly dot?: boolean | undefined
   readonly nocase?: boolean | undefined
-  readonly kind?: "all" | "files" | "directories" | undefined
-  /** Literal includes links themselves; follow additionally traverses linked dirs. */
-  readonly symlinks?: "literal" | "follow" | undefined
+  readonly kind?: "all" | "files" | "directories" | "non-directories" | undefined
+  /** Literal never traverses links; glob uses npm's default rules; follow recurses. */
+  readonly symlinks?: "literal" | "glob" | "follow" | undefined
   readonly metadata?: boolean | undefined
   /** Gitignore is an explicit ripgrep-only search profile. */
   readonly policy?: "literal" | "gitignore" | undefined
@@ -75,7 +76,7 @@ export function make(fs: FileSystem.FileSystem, backend: Backend, cwd: () => str
     [TypeId]: true,
     enumerate: backend.enumerate,
     glob: (pattern, options) => Effect.map(backend.enumerate({
-      ...options, root: options?.root ?? cwd(), patterns: [pattern]
+      ...options, symlinks: options?.symlinks ?? "glob", root: resolve(cwd(), options?.root ?? "."), patterns: [pattern]
     }), (baseline) => baseline.entries.map((entry) => entry.path))
   }
 }

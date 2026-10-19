@@ -5,6 +5,7 @@
     "": {
       "name": "effect-watchman",
       "dependencies": {
+        "glob": "13.0.6",
         "minimatch": "10.0.3",
       },
       "devDependencies": {
@@ -14,7 +15,6 @@
         "@types/node": "26.6.5",
         "@typescript/native-preview": "7.0.0-dev.20251207.1",
         "effect": "4.0.1",
-        "glob": "^13.0.6",
       },
       "peerDependencies": {
         "effect": "4.0.1",

@@ -1,7 +1,7 @@
 {
 	"name": "effect-watchman",
 	"version": "1.0.0",
-	"description": "Independent enhanced Effect filesystem watching through a WatchBackend",
+	"description": "Independent Effect filesystem watching and approved-root glob enumeration through Watchman",
 	"main": "./dist/effect-watchman.js",
 	"types": "./dist/effect-watchman.d.ts",
 	"exports": {
@@ -11,13 +11,13 @@
 		},
 		"./package.json": "./package.json"
 	},
-	"files": ["dist", "README.md", "IGNORE.md"],
+	"files": ["dist", "README.md", "IGNORE.md", "ENUMERATION.md"],
 	"sideEffects": false,
 	"scripts": {
 		"build": "tsgo -p tsconfig.build.json",
 		"typecheck": "tsgo --noEmit -p tsconfig.json",
 		"test": "bun test ./test",
-		"test:daemon": "bun test ./test/daemon.test.ts"
+		"test:daemon": "bun test ./test/daemon.test.ts ./test/enumeration.test.ts"
 	},
 	"peerDependencies": {
 		"effect": "4.0.1"
@@ -28,8 +28,7 @@
 		"@types/bun": "1.4.0",
 		"@types/node": "26.6.5",
 		"@typescript/native-preview": "7.0.0-dev.20251207.1",
-		"effect": "4.0.1",
-		"glob": "^13.0.6"
+		"effect": "4.0.1"
 	},
 	"repository": {
 		"type": "git",
@@ -44,6 +43,7 @@
 	},
 	"homepage": "https://github.com/rektide/effect-watchman#readme",
 	"dependencies": {
+		"glob": "13.0.6",
 		"minimatch": "10.0.3"
 	}
 }

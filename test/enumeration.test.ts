@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test"
 import { spawn } from "node:child_process"
 import { existsSync } from "node:fs"
-import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises"
+import { chmod, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises"
 import { glob } from "glob"
 import { join } from "node:path"
 import { NodeFileSystem, NodePath } from "@effect/platform-node"
@@ -9,13 +9,16 @@ import { Effect, Layer } from "effect"
 import { Glob, Watchman } from "../effect-watchman.js"
 import { selection } from "../src/Selection.js"
 import { patterns, populate } from "./enumeration-cases.js"
+import { inventory } from "./consumer.js"
 
 const binary = process.env.WATCHMAN_TEST_BINARY
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 test("planner retains selective simple globs and widens extglobs/classes without losing prefixes", () => {
   expect(selection({ root: "/root", patterns: ["src/**/*.ts"] }).candidates).toEqual(["src/**/*.ts"])
-  expect(selection({ root: "/root", patterns: ["src/@(a|b).[jt]s"] }).candidates).toEqual(["src/*"])
+  expect(selection({ root: "/root", patterns: ["src/??.ts"] }).candidates).toEqual(["src/*.ts"])
+  expect(selection({ root: "/root", patterns: ["src/@(a|b).[jt]s"] }).candidates).toEqual(["src/*s"])
+  expect(selection({ root: "/root", patterns: ["**/@(a|b).ts"] }).candidates).toEqual(["**/*.ts"])
   expect(selection({ root: "/root", patterns: ["{src,test}/**/*.ts"] }).candidates).toEqual(["src/**/*.ts", "test/**/*.ts"])
   expect(() => selection({ root: "/root", patterns: ["{src,..}/**"] })).toThrow()
 })
@@ -37,14 +40,21 @@ test.skipIf(!binary)("private daemon: glob residual conformance, selective pushd
     const filesystem = Watchman.layerWithGlob({ socketPath, approvedRoots: [root] }).pipe(Layer.provide(Layer.mergeAll(NodeFileSystem.layer, NodePath.layer)))
     await Effect.runPromise(Effect.gen(function*() {
       const fs = yield* Glob.fileSystem
+      expect(yield* inventory(fs, join(root, "src"))).toEqual(["a.ts", "b.js", "deep/c.ts", "deep/two.js"])
+      expect(yield* fs.glob("**/*", { root: join(root, "not-created") })).toEqual([])
       for (const pattern of patterns) {
-        const actual = yield* fs.glob(pattern, { root })
+        const actual = yield* fs.glob(pattern, { root, symlinks: "literal" })
         const expected = yield* Effect.promise(async () => {
           return (await glob(pattern, { cwd: root })).filter((name) => !name.startsWith("alias/") && !name.startsWith("external/"))
         })
         // Explicit literal traversal excludes link descendants. Node sometimes
         // traverses one level even with its default non-follow behavior.
         expect([...actual].sort(), pattern).toEqual(expected.sort())
+      }
+      for (const pattern of [...patterns, "alias/*.ts", "alias/**/*.ts", "alias/", "alias/**/", "external/**/*.ts", "external/", "a*/**/*.ts", "@(alias|src)/**/*.ts", "**/", "."]) {
+        const actual = yield* fs.glob(pattern, { root, symlinks: "glob" })
+        const expected = yield* Effect.promise(() => glob(pattern, { cwd: root, follow: false, dot: false }))
+        expect([...actual].sort(), `npm traversal: ${pattern}`).toEqual(expected.sort())
       }
       const broad = yield* fs.enumerate({ root, patterns: ["**/*.ts"], dot: true, symlinks: "follow", kind: "files" })
       expect(broad.kind).toBe("scanned")
@@ -62,8 +72,15 @@ test.skipIf(!binary)("private daemon: glob residual conformance, selective pushd
       expect(limited.entries).toEqual([])
       const nested = yield* fs.enumerate({ root: join(root, "src"), patterns: ["**/*.ts"] })
       expect(nested.entries.map((entry) => entry.path)).toEqual(["a.ts", "deep/c.ts"])
+      const externalRoot = yield* fs.enumerate({ root: join(root, "external"), patterns: ["**/*"], symlinks: "follow" })
+      expect(externalRoot.kind).toBe("scanned")
+      expect(externalRoot.entries.map((entry) => entry.path)).toEqual(["deep", "deep/external.js", "external.ts"])
       const directories = yield* fs.enumerate({ root, patterns: ["*"], kind: "directories" })
       expect(directories.entries.map((entry) => entry.path)).toEqual(expect.arrayContaining(["empty", "src", "alias", "external", "ignored"]))
+      const nondirectories = yield* fs.enumerate({ root, patterns: ["*"], kind: "non-directories", symlinks: "glob" })
+      expect(nondirectories.entries.some((entry) => entry.path === "broken")).toBe(true)
+      expect(nondirectories.entries.some((entry) => entry.path === "alias" || entry.path === "src")).toBe(false)
+      expect(yield* fs.glob("alias/**/*.ts", { root })).toEqual(["alias/a.ts", "alias/deep/c.ts"])
       const nocase = yield* fs.glob("root.ts", { root, nocase: true })
       expect(nocase).toEqual(["root.ts", "ROOT.TS"])
       const denied = yield* fs.enumerate({ root: external }).pipe(Effect.result)
@@ -83,10 +100,24 @@ test.skipIf(!binary)("private daemon: glob residual conformance, selective pushd
       expect(large.entries).toHaveLength(8000)
       expect(JSON.stringify(large.entries).length).toBeGreaterThan(1024 * 1024)
     }).pipe(Effect.provide(filesystem)))
+    // Remove permission before this root is ever acquired. Changing permissions
+    // after a crawl can leave a still-complete cached membership, not a warning.
+    if (process.getuid?.() !== 0) {
+      const permissionRoot = join(scratch, "permission-root")
+      await mkdir(join(permissionRoot, "denied"), { recursive: true })
+      await writeFile(join(permissionRoot, "denied", "missing.ts"), "not allowed to disappear silently")
+      await chmod(join(permissionRoot, "denied"), 0o000)
+      const incomplete = await Effect.runPromise(Effect.gen(function*() {
+        const fs = yield* Glob.fileSystem
+        return yield* fs.enumerate({ root: permissionRoot }).pipe(Effect.result)
+      }).pipe(Effect.provide(Glob.layer({ socketPath, approvedRoots: [permissionRoot] }).pipe(Layer.provide(NodeFileSystem.layer)))))
+      expect(incomplete._tag).toBe("Failure")
+    }
     // Exact acquisition never asks watch-project to find a broader root.
     const log = await readFile(join(scratch, "log"), "utf8")
     expect(log).not.toContain("fatal")
   } finally {
+    await chmod(join(scratch, "permission-root", "denied"), 0o755).catch((error: NodeJS.ErrnoException) => { if (error.code !== "ENOENT") throw error })
     daemon.kill("SIGTERM")
     await Promise.race([exited, pause(1000)])
     if (daemon.exitCode === null) { daemon.kill("SIGKILL"); await exited }

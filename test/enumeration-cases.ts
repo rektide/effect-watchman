@@ -1,7 +1,7 @@
 import { mkdir, symlink, writeFile } from "node:fs/promises"
 import { dirname, join } from "node:path"
 
-export const files = ["root.ts", "ROOT.TS", ".root.ts", "src/a.ts", "src/b.js", "src/one.md", "src/.dot.ts", "src/deep/c.ts", "src/deep/two.js", "src/no.txt", "a[1].ts", "space name.ts", "line\nname.ts", "nested/.private/file.ts", "ignored/inside.ts", ".git/objects/deep/object.ts"]
+export const files = ["root.ts", "ROOT.TS", ".root.ts", "src/a.ts", "src/b.js", "src/one.md", "src/.dot.ts", "src/deep/c.ts", "src/deep/two.js", "src/no.txt", "a[1].ts", "space name.ts", "line\nname.ts", "é.ts", "😀.ts", "nested/.private/file.ts", "ignored/inside.ts", ".git/objects/deep/object.ts"]
 export async function populate(root: string, external: string) {
   await mkdir(root, { recursive: true })
   await mkdir(external, { recursive: true })
@@ -20,4 +20,4 @@ export async function populate(root: string, external: string) {
   await symlink("missing", join(root, "broken"))
 }
 
-export const patterns = ["*", "**", "**/*", "src/", "src/**", "src/**/*.{ts,js}", "src/[ab].*", "src/@(a|b).*", "src/!(a).ts", "a\\[1\\].ts", "./src/*.ts", "{src,empty}", "{src/deep,ignored}/**", "**/.private/**", "nothing/**"]
+export const patterns = ["*", "**", "**/*", "?.ts", "??.ts", "src/", "src/**", "src/**/*.{ts,js}", "src/[ab].*", "src/@(a|b).*", "src/!(a).ts", "a\\[1\\].ts", "./src/*.ts", "{src,empty}", "{src/deep,ignored}/**", "**/.private/**", "nothing/**"]

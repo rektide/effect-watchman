@@ -20,6 +20,7 @@ export type Reply = typeof Reply.Type
 const Envelope = Schema.Struct({ error: Schema.optional(Schema.String), subscription: Schema.optional(Schema.String), canceled: Schema.optional(Schema.Boolean) })
 export const QueryReply = Schema.Struct({
   clock: Schema.String,
+  warning: Schema.optional(Schema.String),
   is_fresh_instance: Schema.optional(Schema.Boolean),
   files: Schema.Array(Schema.Union([Schema.String, Schema.Struct({
     name: Schema.String,
@@ -107,14 +108,16 @@ export class Connection {
   }
 
   query(command: ReadonlyArray<unknown>, signal: AbortSignal, timeout: number, maxBytes: number): Promise<QueryReply> {
-    return this.request(command, signal, timeout, timeout, (input, bytes) => {
+    return this.request(command, signal, timeout, this.options.queueTimeoutMs ?? timeout, (input, bytes) => {
       if (bytes > maxBytes) throw new Error("Watchman query result-byte budget exceeded")
-      return Schema.decodeUnknownSync(QueryReply)(input)
+      const reply = Schema.decodeUnknownSync(QueryReply)(input)
+      if (reply.warning) throw new Error(`Watchman cannot guarantee a complete baseline: ${reply.warning}`)
+      return reply
     }, false)
   }
 
   config(root: string, signal: AbortSignal): Promise<typeof ConfigReply.Type> {
-    return this.request(["get-config", root], signal, this.options.requestTimeoutMs ?? 3000, this.options.requestTimeoutMs ?? 3000,
+    return this.request(["get-config", root], signal, this.options.requestTimeoutMs ?? 3000, this.options.queueTimeoutMs ?? this.options.requestTimeoutMs ?? 3000,
       (input) => Schema.decodeUnknownSync(ConfigReply)(input))
   }
 
@@ -132,7 +135,6 @@ export class Connection {
       const request: Command = {
         command,
         transmitted: () => {
-          if (queueTimeout === timeout) return
           clearTimeout(timer)
           timer = setTimeout(() => this.fail(new Error("Watchman request timeout")), timeout)
         },
