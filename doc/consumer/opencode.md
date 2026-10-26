@@ -7,6 +7,10 @@ status: active
 author: GPT-6.1 Sol medium
 date: 2026-10-26
 sources:
+  - resource: "opencode://ses_e86c9c098ffehnHwijckTZWo6d"
+    title: Close reset-only catalog reachability and verify packed-provider application recovery plus built CLI private stock-daemon smoke
+  - resource: "file:///home/rektide/src/opencode-watchman/.design/watchman/acceptance0.sol61m.md"
+    title: Priority 5 composed verification, binary hash, isolated artifacts and limitations
   - resource: "opencode://ses_e86eae12dffeSU0n3uUoqScW0i"
     title: Implement host recovery selection/readiness and last-good paced application refresh; distinguish remaining composed acceptance
   - resource: "file:///home/rektide/src/opencode-watchman/.design/watchman/recovery-host0.sol61m.md"
@@ -127,13 +131,25 @@ until a successful retry. ⇄ [Application receipt](file:///home/rektide/src/ope
 records deterministic failure/recovery tests and their limits. These are host
 responsibilities, not reasons for the library to manufacture empty results.
 
-## Evidence still required
+## Composed host verification
 
-Use deterministic private fault peers for absent startup, many-interest disconnect,
-accepted-but-silent and idle-wedged sockets, local root rejection/history loss,
-flaps, bounded reattachment and prompt shutdown. Exercise actual public exports
-and shared watch/query composition. Use only owned private daemons for stock
-protocol checks. Library and packed-provider host tests already cover several of
-these boundaries; full config/skills/provider composition and a built-binary private
-daemon smoke remain Priority 5. Healthy-daemon tests alone do not establish recovery
-correctness. No live service was operated for these changes.
+OpenCode's Priority 5 closes catalog-only reset reachability with a separate bounded
+internal Config rescan feed. It does not manufacture filesystem updates or change
+semantic `config.updated`. Actual consumed-provider tests now exercise Config,
+ordinary and compatibility skills, agent/command catalogs and approved enumeration
+failure/last-good recovery. Two connection losses converge create/edit/delete work
+without restarting consumers; query failure recovery requires no new file hint.
+
+The native Linux x64 CLI was built and exercised against an owned foreground stock
+daemon in both watch-only and approved-root modes, with isolated HOME/XDG/database
+and private sockets. Last-good catalogs survived daemon termination; restarting it
+converged Config and all tested catalogs. Both CLI processes exited zero, and all
+owned daemons were joined. No live service or ambient daemon was operated.
+
+⇄ [Final host receipt](file:///home/rektide/src/opencode-watchman/.design/watchman/acceptance0.sol61m.md)
+records 299 focused host tests, repeated composed/selection checks, official package
+typechecks, the passing canonical root check, exact binary hash and private artifacts.
+Earlier library fault tests remain the evidence for absent startup, many-interest
+restoration, wedges, flaps, local rejection and bounded shutdown; they are not
+misrepresented as full application tests. This is Linux-scoped verification, not
+Windows acceptance, all-repository tests or authorization to enable deployment.
