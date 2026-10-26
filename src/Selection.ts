@@ -14,6 +14,7 @@ export function selection(request: Request) {
     return matcher
   }
   const includes = (request.patterns ?? ["**/*"]).map((pattern) => compile(pattern, request.dot ?? false))
+  const maxDepth = Math.max(...includes.flatMap((matcher) => matcher.set.map((parts) => parts.includes(GLOBSTAR) ? Infinity : parts.filter(Boolean).length)))
   const excludes = (request.exclude ?? []).map((pattern) => compile(pattern, true))
   const matches = (matcher: Minimatch, name: string, directory: boolean) => matcher.match(name === "." ? "" : name) || (name === "." && matcher.match(".")) ||
     (directory && matcher.match(name === "." ? "" : name + "/"))
@@ -55,7 +56,7 @@ export function selection(request: Request) {
   }))]
   const literalExcludes = request.nocase ? [] : excludes.flatMap((matcher) => matcher.set.flatMap((parts) =>
     parts.every((part): part is string => typeof part === "string") ? [parts.filter(Boolean).join("/")].filter((name) => name && name !== ".") : []))
-  return { accepts, mayDescend, excluded, candidates, links, literalExcludes }
+  return { accepts, mayDescend, maxDepth, excluded, candidates, links, literalExcludes }
 }
 
 export function safeName(name: string) {

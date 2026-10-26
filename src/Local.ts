@@ -33,6 +33,9 @@ export async function walk(request: Request, starts: ReadonlyArray<string>, sign
     entries.set(name, entry)
     const directory = entry.type === "Directory" || ((name === "." || request.symlinks === "follow") && entry.targetType === "Directory")
     if (!directory || !matcher.mayDescend(name)) return
+    // A matched directory is still a result, but fixed-depth patterns need none
+    // of its children. In particular '*' supplementation must stay shallow.
+    if (name !== "." && name.split("/").length >= matcher.maxDepth) return
     const identity = await realpath(resolve(request.root, name))
     if (ancestors.has(identity)) return
     const chain = new Set([...ancestors, identity])

@@ -7,6 +7,8 @@ status: implemented
 author: GPT-6.1 Sol xhigh
 date: 2026-10-19
 sources:
+  - resource: "opencode://ses_e86321c9effeBsU4Tba8JL11k2"
+    title: Bound fixed-depth local supplementation before child reads for OpenCode skill directory discovery; verify with a permission boundary and the library suite
   - resource: "opencode://ses_ead2c9a29fferY0Og3JRINkhz4"
     title: Enumeration implementation, real daemon verification, wide-directory review correction and explicit nodir limits
   - resource: /src/Enumeration.ts
@@ -116,6 +118,12 @@ Those walks are limited by the declared selection. Symlink targets can be native
 supplements too. If the requested root itself is a symlink below approval pointing
 outside it, that root is explicitly enumerated locally, without watching its target.
 This is a scanned Watchman-provider baseline, not a daemon checkpoint.
+
+Fixed-depth patterns stop local supplementation at their maximum pathname depth:
+`patterns:["*"]` returns immediate lexical entries (including an ignored directory
+itself) without reading those directories' children. The daemon generator is also
+`glob:["*"]`, not a recursive inventory filtered afterward. This does not eliminate
+native metadata reads, link target classification or explicitly required supplements.
 
 `coverage:"daemon"` explicitly accepts configured daemon scope. It does not recover
 ignored subtrees and is not a complete filesystem inventory. A symlink-root outside
