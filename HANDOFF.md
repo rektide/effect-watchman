@@ -7,6 +7,8 @@ status: active
 author: GPT-6.1 Sol xhigh
 date: 2026-10-19
 sources:
+  - resource: "opencode://ses_e87038c1affeHRNE9v4Ggec0Sl"
+    title: Record the new shared recovery receipt and distinguish it from preserved terminal-owner history
   - resource: "opencode://ses_ead2c9a29fferY0Og3JRINkhz4"
     title: Added the current enumeration receipt without replacing earlier watch verification history
   - resource: /ENUMERATION.md
@@ -14,6 +16,24 @@ sources:
 ---
 
 # Build handoff: independent additive Watchman
+
+## Shared recovery extension — 2026-10-26
+
+Implementation `21b13955` with stable-health correction `bfab3158` adds one scoped generation/reconnect/serial-restore/idle-probe
+controller, passive health and the optional checked `Recovery.fileSystem` signal
+capability. Initial/recovery acknowledgement precedes resets and later hints;
+history loss can reset within a generation. Ordinary watching still fails on loss.
+The older statements below that an owner remains terminal now describe history,
+not the current owner. See [the recovery API](RECOVERY.md) and
+[OpenCode's consumer account](doc/consumer/opencode.md) for the selected boundary,
+startup degradation, bounded cleanup budgets and remaining application obligations.
+
+`bun run typecheck` passed. Full tests with the owned private stock daemon:
+**42 passed, 0 failed**, including ten new fault-peer cases and signal attachment
+in the existing daemon suite. All ten fault-peer cases also passed 10 randomized
+repetitions (**100 passed**, seed `1138966675`). OpenCode signal-to-invalidate
+mapping, application last-good scan retry and built-host outage acceptance remain
+separate priorities. No ambient daemon/service operations were used.
 
 ## Enumeration extension — 2026-10-19
 

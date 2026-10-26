@@ -3,12 +3,14 @@ type: ConsumerAccount
 title: OpenCode shared Watchman recovery requirements
 description: Current OpenCode adoption, outage requirements, reset-contract decision, and deferred application refresh repair.
 resource: /doc/consumer/opencode.md
-status: proposed
+status: active
 author: GPT-6.1 Sol medium
 date: 2026-10-26
 sources:
   - resource: "opencode://ses_e87038c1affeHRNE9v4Ggec0Sl"
-    title: Inspect owner and host composition, record shared recovery requirements and the reset-contract decision before implementation
+    title: Implement and verify shared owner recovery and additive signals; record the parent decision and deferred application obligations
+  - resource: "opencode://ses_e870ad63fffepjINA5vdd58LWO"
+    title: Parent selects additive checked typed signals, passive health and preserved ordinary-stream failure on loss
   - resource: /README.md
     title: Public additive watch composition and current terminal-loss contract
   - resource: /design/watch/additive-gate.md
@@ -45,7 +47,11 @@ watch events and readiness through one capacity-one dirty queue with a fixed
 100 ms settling window. This does not recover the shared provider or change the
 library's existing terminal-loss contract.
 
-## Required provider recovery — not yet implemented
+## Required provider recovery — implemented in the library
+
+Implementation `21b13955` and stable-health correction `bfab3158` supply the following lifecycle. ⇄
+[Recovery API](/RECOVERY.md) owns its public contract, limits and evidence. OpenCode
+has not yet mapped these signals to invalidation or demonstrated outage convergence.
 
 - One scoped owner controller reconnects and probes; no per-consumer retry loops.
   Generations bind connections, cached roots and attachments. Query/watch sharing
@@ -64,7 +70,7 @@ library's existing terminal-loss contract.
   explicit reset boundary before later events. Events arriving while the consumer
   rescans need bounded buffering; overflow must remain visible.
 
-## Reset contract decision — awaiting review
+## Reset contract decision — option 1 selected by the parent
 
 The ordinary Effect `FileSystem.WatchEvent` union has no reset case. The existing
 [additive gate](/design/watch/additive-gate.md) explicitly rejects fabricated root
@@ -83,9 +89,10 @@ updates and a mandatory observation service. Two additive routes remain possible
    event type but requires carrying the enhanced option through the captured
    backend seam and specifying callback failure, retry and cancellation semantics.
 
-Neither route is implemented or accepted by this account. OpenCode's explicit
-reset-to-invalidate integration is Priority 3, after the provider contract is
-selected and verified. Consuming a recovery archive without that integration must
+The parent selected option 1; it is now implemented as `Recovery.fileSystem` on
+the existing filesystem object. Option 2 remains an unselected alternative, not a
+second implementation. OpenCode's explicit reset-to-invalidate integration is
+Priority 3. Consuming a recovery archive without that integration must
 not silently turn existing ordinary streams into apparently continuous streams.
 
 ## Deferred application repair — Priority 4

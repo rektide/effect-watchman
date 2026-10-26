@@ -11,7 +11,7 @@
 		},
 		"./package.json": "./package.json"
 	},
-	"files": ["dist", "README.md", "IGNORE.md", "ENUMERATION.md"],
+	"files": ["dist", "README.md", "IGNORE.md", "ENUMERATION.md", "RECOVERY.md"],
 	"sideEffects": false,
 	"scripts": {
 		"build": "tsgo -p tsconfig.build.json",
