@@ -56,6 +56,7 @@ export const makeOwner = (options: Options) => Effect.gen(function*() {
     })), catch: failure
   })
   const wake = yield* Queue.sliding<void>(1)
+  const clock = yield* Clock.Clock
   const interests = new Map<Interest, { abort: AbortController; generation: number }>()
   let active: Session | undefined
   let candidate: Connection | undefined
@@ -85,6 +86,7 @@ export const makeOwner = (options: Options) => Effect.gen(function*() {
   const connect = Effect.gen(function*() {
     const connection = new Connection(options, (error) => {
       if (closed || active?.connection !== connection) return
+      if (state === "healthy" && clock.currentTimeMillisUnsafe() - healthySince >= (options.stableHealthMs ?? 30_000)) attempts = 0
       active.abort.abort()
       active = undefined
       state = "recovering"
@@ -102,7 +104,6 @@ export const makeOwner = (options: Options) => Effect.gen(function*() {
       return false
     }
     active = { connection, generation: ++generation, roots: new Map(), abort: new AbortController() }
-    healthySince = yield* Clock.currentTimeMillis
     return true
   })
   // Preserve bounded startup acquisition, but a missing daemon leaves a usable
@@ -143,6 +144,7 @@ export const makeOwner = (options: Options) => Effect.gen(function*() {
         slot.generation = session.generation
       }
       if (active !== session) continue
+      if (state !== "healthy") healthySince = yield* Clock.currentTimeMillis
       state = "healthy"
       reason = undefined
       if (outage) {

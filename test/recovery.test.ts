@@ -291,3 +291,29 @@ test("accepted but silent socket hits bounded attachment deadline without false 
     expect((yield* recovery.health).state).toBe("recovering")
   })).pipe(Effect.provide(Watchman.layer({ socketPath: fixture.socketPath, requestTimeoutMs: 50 }).pipe(Layer.provide(platform)))))
 })
+
+test("time spent restoring interests does not count as stable healthy time", async () => {
+  await using fixture = await peer()
+  const common = fixture.state.respond
+  let held: { command: Command; socket: Socket } | undefined
+  fixture.state.respond = (command, socket) => {
+    if (fixture.connections.indexOf(socket) === 1 && command[0] === "subscribe") { held = { command, socket }; return }
+    common(command, socket)
+  }
+  await run(Effect.scoped(Effect.gen(function*() {
+    const recovery = yield* Recovery.fileSystem
+    const signals: Recovery.Signal[] = []
+    yield* recovery.watch(fixture.directory).pipe(Stream.runForEach((signal) => Effect.sync(() => signals.push(signal))), Effect.forkScoped)
+    yield* Effect.promise(() => until(() => signals.length === 1))
+    fixture.connections[0]?.destroy()
+    yield* advance(() => held !== undefined)
+    yield* TestClock.adjust(5000)
+    const pending = held
+    if (!pending) throw new Error("Missing pending restoration")
+    send(pending.socket, { subscribe: pending.command[2] })
+    yield* Effect.promise(() => until(() => signals.length === 2))
+    expect((yield* recovery.health).attempts).toBe(1)
+    pending.socket.destroy()
+    yield* healthUntil(recovery, (health) => health.state === "recovering" && health.attempts === 2)
+  })).pipe(Effect.provide(Watchman.layer({ socketPath: fixture.socketPath, stableHealthMs: 1000 }).pipe(Layer.provide(platform)))))
+})
