@@ -3,11 +3,12 @@ export * from "./Enumeration.js"
 
 import { Effect, FileSystem, Layer } from "effect"
 import type { ConnectionOptions } from "./Connection.js"
+import type { RecoveryOptions } from "./Owner.js"
 import { make } from "./Enumeration.js"
 import { makeGlobBackend, ownerOptions } from "./GlobBackend.js"
 import { makeOwner } from "./Owner.js"
 
-export interface Options extends ConnectionOptions {
+export interface Options extends ConnectionOptions, RecoveryOptions {
   /** Exact, explicit daemon acquisition boundaries. Must be absolute. */
   readonly approvedRoots: ReadonlyArray<string>
   readonly queryTimeoutMs?: number | undefined

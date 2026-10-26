@@ -5,7 +5,7 @@ import { mkdir, mkdtemp, readFile, rename, rm, symlink, writeFile, unlink } from
 import { dirname, join } from "node:path"
 import { NodeFileSystem, NodePath } from "@effect/platform-node"
 import { Effect, Fiber, FileSystem, Layer, Stream } from "effect"
-import { Watchman } from "../effect-watchman.js"
+import { Recovery, Watchman } from "../effect-watchman.js"
 import { cases, ignores } from "./ignore-cases.js"
 
 const binary = process.env.WATCHMAN_TEST_BINARY
@@ -53,8 +53,13 @@ test.skipIf(!binary)("private stock daemon: public backend and enhanced fs.watch
     const logical: Array<FileSystem.WatchEvent> = []
     const globAudit: Array<FileSystem.WatchEvent> = []
     const globFiltered: Array<FileSystem.WatchEvent> = []
+    const signals: Array<Recovery.Signal> = []
     await Effect.runPromise(Effect.scoped(Effect.gen(function*() {
       const fs = yield* Watchman.fileSystem
+      const recovery = yield* Recovery.fileSystem
+      yield* recovery.watch(root, { recursive: true }).pipe(Stream.runForEach((signal) => Effect.sync(() => signals.push(signal))), Effect.forkScoped)
+      yield* Effect.promise(() => until(() => signals.length > 0))
+      expect(signals[0]).toMatchObject({ _tag: "Reset", generation: 1, sequence: 1 })
       yield* fs.watch(globRoot, { recursive: true }).pipe(Stream.runForEach((event) => Effect.sync(() => globAudit.push(event))), Effect.forkScoped)
       yield* fs.watch(globRoot, { recursive: true, ignore: ignores }).pipe(Stream.runForEach((event) => Effect.sync(() => globFiltered.push(event))), Effect.forkScoped)
       const first = yield* fs.watch(root, { recursive: true, ignore: ["ignored"] }).pipe(Stream.runForEach((event) => Effect.sync(() => recursive.push(event))), Effect.forkScoped)
@@ -85,6 +90,7 @@ test.skipIf(!binary)("private stock daemon: public backend and enhanced fs.watch
         for (const [name, included] of cases) expect(globFiltered.some((event) => event.path === join(globRoot, name))).toBe(included)
         await writeFile(join(root, "created"), "one")
         await until(() => recursive.some((event) => event._tag === "Create" && event.path === join(root, "created")))
+        await until(() => signals.some((signal) => signal._tag === "Event" && signal.event.path === join(root, "created")))
         await until(() => logical.some((event) => event._tag === "Create" && event.path === join(alias, "created")))
         await writeFile(join(root, "created"), "two")
         await until(() => recursive.some((event) => event._tag === "Update" && event.path === join(root, "created")))

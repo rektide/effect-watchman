@@ -2,19 +2,25 @@ import { basename, dirname, isAbsolute, relative, resolve, sep } from "node:path
 import { Effect, FileSystem, Layer, Option, Stream } from "effect"
 import { Delivery } from "./Connection.js"
 import { failure, makeOwner, type Owner } from "./Owner.js"
+import { Recovery } from "./Recovery.js"
+import { makeSignalBackend } from "./SignalBackend.js"
 
 export type { Options } from "./Owner.js"
 import type { Options } from "./Owner.js"
 
 export const backendLayer = (options: Options) => Layer.effect(FileSystem.WatchBackend, Effect.map(makeOwner(options), makeBackend))
 
-export function makeBackend(owner: Owner): FileSystem.WatchBackend["Service"] {
-  const { connection, options, command } = owner
-  return FileSystem.WatchBackend.of({
+export function makeBackend(owner: Owner): Recovery.Backend {
+  const { options } = owner
+  return {
+    [Recovery.BackendTypeId]: makeSignalBackend(owner),
     register(target, info, watchOptions) {
       return Option.some(Stream.unwrap(Effect.gen(function*() {
         const logical = resolve(info.type === "Directory" ? target : dirname(target))
-        const project = yield* owner.project(logical)
+         const project = yield* owner.project(logical)
+         const connection = project.session.connection
+         const command = (args: ReadonlyArray<unknown>, key: string, value?: string, timeout?: number, queueTimeout?: number) =>
+           owner.command(args, key, value, timeout, queueTimeout, project.session)
         const root = project.reply.watch
         if (!root) return yield* Effect.fail(failure("Watchman watch-project omitted root"))
         const boundary = yield* command(["clock", root], "clock")
@@ -54,5 +60,5 @@ export function makeBackend(owner: Owner): FileSystem.WatchBackend["Service"] {
         return Stream.fromAsyncIterable(delivery, failure)
       })))
     }
-  })
+  }
 }

@@ -2,6 +2,7 @@ import { createConnection, type Socket } from "node:net"
 import { Schema } from "effect"
 
 const Reply = Schema.Struct({
+  version: Schema.optional(Schema.String),
   error: Schema.optional(Schema.String),
   watch: Schema.optional(Schema.String),
   relative_path: Schema.optional(Schema.String),
@@ -46,6 +47,8 @@ export interface ConnectionOptions {
   readonly maxBufferedEvents?: number
 }
 
+export class SubscriptionCanceled extends Error {}
+
 interface Command {
   readonly command: ReadonlyArray<unknown>
   readonly transmitted: () => void
@@ -62,7 +65,9 @@ export class Connection {
   private pending: Command | undefined
   private queue: Array<Command> = []
 
-  constructor(readonly options: ConnectionOptions) {}
+  constructor(readonly options: ConnectionOptions, readonly onFailure: (error: Error) => void = () => {}) {}
+
+  get idle(): boolean { return !this.pending && this.queue.length === 0 }
 
   connect(signal: AbortSignal): Promise<void> {
     return new Promise((resolve, reject) => {
@@ -93,6 +98,7 @@ export class Connection {
     this.listeners.clear()
     this.buffer = Buffer.alloc(0)
     this.socket?.destroy()
+    this.onFailure(error)
   }
 
   check(): void { if (this.terminal) throw this.terminal }
@@ -191,7 +197,13 @@ export class Connection {
         const input = Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Unknown))(frame)
         const envelope = Schema.decodeUnknownSync(Envelope)(input)
         // Cancellation must win over ordinary unilateral subscription delivery.
-        if (envelope.canceled) { this.fail(new Error("Watchman subscription canceled")); return }
+        if (envelope.canceled) {
+          if (!envelope.subscription) { this.fail(new Error("Watchman cancellation omitted subscription")); return }
+          const listener = this.listeners.get(envelope.subscription)
+          this.listeners.delete(envelope.subscription)
+          listener?.fail(new SubscriptionCanceled("Watchman subscription canceled"))
+          continue
+        }
         if (envelope.subscription) {
           const reply = Schema.decodeUnknownSync(Reply)(input)
           this.listeners.get(envelope.subscription)?.push(reply)

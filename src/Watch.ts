@@ -6,11 +6,13 @@ import { Glob } from "./Glob.js"
 import { makeGlobBackend, ownerOptions } from "./GlobBackend.js"
 import { makeOwner } from "./Owner.js"
 import type { ConnectionOptions } from "./Connection.js"
+import type { RecoveryOptions } from "./Owner.js"
+import { Recovery } from "./Recovery.js"
 import { compileIgnore, resolveIgnore, type IgnoreOptions } from "./Ignore.js"
 
 export { backendLayer } from "./Backend.js"
 export { defaultIgnores, resolveIgnore, type IgnoreOptions } from "./Ignore.js"
-export type Options = ConnectionOptions & IgnoreOptions
+export type Options = ConnectionOptions & RecoveryOptions & IgnoreOptions
 
 /** Structural contract shared with Watch Plus, without a runtime dependency. */
 export const TypeId = "~effect-watch/options/v2"
@@ -42,36 +44,38 @@ export const fileSystem = Effect.flatMap(FileSystem.FileSystem, (fs) => supports
  * The socket-configured backendLayer supplies the shared scoped daemon manager.
  */
 export function make(fs: FileSystem.FileSystem, path: Path.Path, backend: FileSystem.WatchBackend["Service"], instance?: IgnoreOptions): EnhancedFileSystem {
-  return {
+  const prepare = (target: string, options?: WatchOptions) => Effect.gen(function*() {
+    const excluded = yield* Effect.try({
+      try: () => compileIgnore(resolveIgnore(options, instance), path),
+      catch: (cause) => PlatformError.badArgument({ module: "Watchman", method: "watch", description: String(cause) })
+    })
+    const info = yield* fs.stat(target)
+    if (options?.followReplacements && info.type !== "File") {
+      return yield* Effect.fail(PlatformError.badArgument({ module: "Watchman", method: "watch", description: "followReplacements requires an existing file" }))
+    }
+    const directory = path.resolve(info.type === "Directory" ? target : path.dirname(target))
+    const anchor = options?.followReplacements ? directory : target
+    const anchorInfo = options?.followReplacements ? yield* fs.stat(anchor) : info
+    const selected = (event: FileSystem.WatchEvent) => {
+      const relative = path.relative(directory, path.resolve(directory, event.path))
+      return (!options?.followReplacements || relative === path.basename(target)) && !excluded(relative)
+    }
+    return { anchor, anchorInfo, selected, options: { recursive: options?.followReplacements ? false : options?.recursive } }
+  })
+  const enhanced: EnhancedFileSystem = {
     ...fs,
     [TypeId]: true,
     watch(target, options) {
       return Stream.unwrap(Effect.gen(function*() {
-        const excluded = yield* Effect.try({
-          try: () => compileIgnore(resolveIgnore(options, instance), path),
-          catch: (cause) => PlatformError.badArgument({ module: "Watchman", method: "watch", description: String(cause) })
-        })
-        const info = yield* fs.stat(target)
-        if (options?.followReplacements && info.type !== "File") {
-          return yield* Effect.fail(PlatformError.badArgument({
-            module: "Watchman", method: "watch", description: "followReplacements requires an existing file"
-          }))
-        }
-        const directory = path.resolve(info.type === "Directory" ? target : path.dirname(target))
-        const anchor = options?.followReplacements ? directory : target
-        const anchorInfo = options?.followReplacements ? yield* fs.stat(anchor) : info
-        const source = backend.register(anchor, anchorInfo, { recursive: options?.followReplacements ? false : options?.recursive })
+         const prepared = yield* prepare(target, options)
+         const source = backend.register(prepared.anchor, prepared.anchorInfo, prepared.options)
         if (Option.isNone(source)) {
           return yield* Effect.fail(PlatformError.badArgument({
             module: "Watchman", method: "watch", description: "Backend declined the watch; native fallback is disabled"
           }))
         }
         return source.value.pipe(
-          Stream.filter((event) => {
-            const relative = path.relative(directory, path.resolve(directory, event.path))
-            return (!options?.followReplacements || relative === path.basename(target)) &&
-              !excluded(relative)
-          }),
+           Stream.filter(prepared.selected),
           Stream.concat(Stream.fail(PlatformError.systemError({
             module: "Watchman", method: "watch", _tag: "UnexpectedEof", pathOrDescriptor: target,
             description: "Backend ended; reconcile before restarting"
@@ -80,6 +84,17 @@ export function make(fs: FileSystem.FileSystem, path: Path.Path, backend: FileSy
       }))
     }
   }
+  if (!Recovery.supportsBackend(backend)) return enhanced
+  const capability: Recovery.Capability = {
+    health: backend[Recovery.BackendTypeId].health,
+    watch: (target, options) => Stream.unwrap(Effect.gen(function*() {
+      const prepared = yield* prepare(target, options)
+      return backend[Recovery.BackendTypeId].register(prepared.anchor, prepared.anchorInfo, prepared.options).pipe(
+        Stream.filter((signal) => signal._tag === "Reset" || prepared.selected(signal.event))
+      )
+    }))
+  }
+  return Object.assign(enhanced, { [Recovery.TypeId]: capability })
 }
 
 /** Independent of Watch Plus. Provide one backend plus filesystem/Path services. */

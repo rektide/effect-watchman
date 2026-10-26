@@ -51,7 +51,7 @@ export function makeGlobBackend(owner: Owner, options: Glob.Options): Backend {
       if (!root || !contains(root, project.canonical)) return yield* Effect.fail(failure("Watchman root does not contain query directory"))
       const subtree = relative(root, project.canonical)
       const query = (globs: ReadonlyArray<string>, links: boolean) => Effect.tryPromise({
-        try: (signal) => owner.connection.query(["query", root, {
+        try: (signal) => project.session.connection.query(["query", root, {
           ...(subtree ? { relative_root: subtree } : {}),
           glob: globs,
           glob_includedotfiles: true,
@@ -84,7 +84,7 @@ export function makeGlobBackend(owner: Owner, options: Glob.Options): Backend {
         const links = yield* query(matcher.links, true)
         yield* decode(links.files)
       }
-      const config = request.coverage === "daemon" ? undefined : yield* owner.config(root)
+       const config = request.coverage === "daemon" ? undefined : yield* owner.config(root, project.session)
       const supplemented = yield* Effect.tryPromise({ try: async (signal) => {
         let mixed = false
         const starts = new Set<string>()
