@@ -1,12 +1,18 @@
 ---
 type: ConsumerAccount
 title: OpenCode shared Watchman recovery requirements
-description: Current OpenCode adoption, outage requirements, reset-contract decision, and deferred application refresh repair.
+description: Current OpenCode adoption, host reset integration, last-good application refresh policy and remaining composed acceptance evidence.
 resource: /doc/consumer/opencode.md
 status: active
 author: GPT-6.1 Sol medium
 date: 2026-10-26
 sources:
+  - resource: "opencode://ses_e86eae12dffeSU0n3uUoqScW0i"
+    title: Implement host recovery selection/readiness and last-good paced application refresh; distinguish remaining composed acceptance
+  - resource: "file:///home/rektide/src/opencode-watchman/.design/watchman/recovery-host0.sol61m.md"
+    title: Host-scoped optional recovery selection and acknowledged ordered readiness verification
+  - resource: "file:///home/rektide/src/opencode-watchman/.design/watchman/refresh-safety0.sol61m.md"
+    title: Application last-good snapshots, strict scan failures, filtering and bounded dirty retry receipt
   - resource: "opencode://ses_e87038c1affeHRNE9v4Ggec0Sl"
     title: Implement and verify shared owner recovery and additive signals; record the parent decision and deferred application obligations
   - resource: "opencode://ses_e870ad63fffepjINA5vdd58LWO"
@@ -43,15 +49,18 @@ See the [host integration](file:///home/rektide/src/opencode-watchman/.design/wa
 and [incident safety priorities](file:///home/rektide/src/opencode-watchman/.design/watchman/incident-safety0.gpt6a.md).
 
 Priority 1 in OpenCode retains compatibility watches and routes raw config updates,
-watch events and readiness through one capacity-one dirty queue with a fixed
-100 ms settling window. This does not recover the shared provider or change the
-library's existing terminal-loss contract.
+watch events and readiness through one capacity-three dirty queue with a fixed
+100 ms settling window. Priority 3 maps the optional archive signal stream through
+a host-scoped selector to Core invalidation/readiness, including acknowledged
+initial attachment. Ordinary filesystem watch semantics remain terminal on loss.
+⇄ [Host receipt](file:///home/rektide/src/opencode-watchman/.design/watchman/recovery-host0.sol61m.md).
 
 ## Required provider recovery — implemented in the library
 
 Implementation `21b13955` and stable-health correction `bfab3158` supply the following lifecycle. ⇄
 [Recovery API](/RECOVERY.md) owns its public contract, limits and evidence. OpenCode
-has not yet mapped these signals to invalidation or demonstrated outage convergence.
+now maps these signals to invalidation, but full composed outage convergence is
+still a separate acceptance obligation.
 
 - One scoped owner controller reconnects and probes; no per-consumer retry loops.
   Generations bind connections, cached roots and attachments. Query/watch sharing
@@ -92,17 +101,31 @@ updates and a mandatory observation service. Two additive routes remain possible
 The parent selected option 1; it is now implemented as `Recovery.fileSystem` on
 the existing filesystem object. Option 2 remains an unselected alternative, not a
 second implementation. OpenCode's explicit reset-to-invalidate integration is
-Priority 3. Consuming a recovery archive without that integration must
+implemented and verified independently. Consuming a recovery archive without that integration must
 not silently turn existing ordinary streams into apparently continuous streams.
 
-## Deferred application repair — Priority 4
+## Application repair — Priority 4 implemented
 
-The compatibility worker currently terminates on refresh failure. Repair must
-catch at the refresh boundary, preserve last-good skills, retain dirty state and
-retry with bounded pacing. Logging and letting the worker die is not recovery.
-Existing scan/read failure suppression also needs review: failure must not become
-an empty successful inventory. These are application responsibilities, not reasons
-for a provider to manufacture successful empty results.
+OpenCode's configuration, skills, compatibility skills, and agent/command directory
+catalog workers now catch non-interruption failures at their refresh boundary,
+retain last-good published state and retry a dirty transaction after a fixed one
+second delay. Three sliding tokens coalesce a batch; changes during a scan or retry
+remain dirty. One warning marks a failing episode; subsequent failed attempts log
+at DEBUG. No provider command retry or native fallback is added.
+
+Directory/glob/read errors no longer become successful empty skill or agent/command
+inventories. True missing/deleted paths still clear entries. Optional native
+inaccessible candidates retain their existing absence policy until selected; loss
+of access to selected configuration documents/discovery roots fails the transaction
+and retains their last-good snapshots. `Config.compatibility()` now reads the
+committed root snapshot, not a fresh error-suppressing existence filter.
+
+Relevant raw compatibility updates and changed compatibility-root snapshots request
+refreshes; unrelated config updates do not. A readiness rescan with identical skills
+does not republish the skill catalog, but failed catalog publication remains pending
+until a successful retry. ⇄ [Application receipt](file:///home/rektide/src/opencode-watchman/.design/watchman/refresh-safety0.sol61m.md)
+records deterministic failure/recovery tests and their limits. These are host
+responsibilities, not reasons for the library to manufacture empty results.
 
 ## Evidence still required
 
@@ -110,5 +133,7 @@ Use deterministic private fault peers for absent startup, many-interest disconne
 accepted-but-silent and idle-wedged sockets, local root rejection/history loss,
 flaps, bounded reattachment and prompt shutdown. Exercise actual public exports
 and shared watch/query composition. Use only owned private daemons for stock
-protocol checks. Archive acceptance and OpenCode outage/rescan tests remain later
-evidence; healthy-daemon tests alone do not establish recovery correctness.
+protocol checks. Library and packed-provider host tests already cover several of
+these boundaries; full config/skills/provider composition and a built-binary private
+daemon smoke remain Priority 5. Healthy-daemon tests alone do not establish recovery
+correctness. No live service was operated for these changes.
