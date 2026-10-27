@@ -63,7 +63,9 @@ before requesting another attach. Only exists classifies rows; deletion metadata
 is ignored, present lexical type is checked, and `new` has no semantic role.
 
 Invalidation advances the view epoch immediately, aborts obsolete acquisition,
-removes the old listener and clears queued old events. Rebaseline and reconnect
+removes the old listener and clears queued old events. Invalidation epochs are
+supersession watermarks: invalidate any applied epoch less than or equal to the
+event's epoch, since consecutive pending resets may coalesce. Rebaseline and reconnect
 reuse one interest. Owner interest revisions prevent a reset during attachment
 from being overwritten by that attachment's completion. In-flight wire replies
 retain the existing Connection ownership discipline until settled.
@@ -82,8 +84,8 @@ No new exporter or instrumentation runtime is installed.
 
 - `bun run build`, `bun run typecheck`.
 - `WATCHMAN_TEST_BINARY=/usr/local/bin/watchman-facebook WATCH_TEST_DIRECTORY=/tmp/opencode bun test ./test`:
-  **57 passed**, including the unchanged seven-test probe, before adding the
-  reset-during-query regression. Focused source tests then passed **70/70**
+  **58 passed**, including the unchanged seven-test probe and
+  reset-during-query regression. Focused source tests also passed **70/70**
   (seven cases repeated ten times); the private-daemon public API passed **10/10**.
 - Scripted real-socket tests cover exact clock use, no subscription expression,
   forced pre-ack delivery, exists-only removal, fresh rejection before rows,
