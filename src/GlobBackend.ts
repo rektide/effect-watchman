@@ -9,6 +9,7 @@ import { safeName, selection } from "./Selection.js"
 import type { Glob } from "./Glob.js"
 import type { QueryReply } from "./Connection.js"
 import type { Session } from "./Owner.js"
+import { begin, end, measure } from "./Diagnostics.js"
 
 /** Daemon query budgets are deliberately separate from watch command deadlines. */
 export function ownerOptions(options: Glob.Options): Options {
@@ -44,7 +45,7 @@ export function makeGlobBackend(owner: Owner, options: Glob.Options): Backend {
         }, catch: failure })
         return {
           complete: true as const, source: "watchman" as const, coverage: request.coverage ?? "filesystem",
-          kind: "scanned" as const, entries: entries.filter(matcher.accepts).sort((a, b) => a.path.localeCompare(b.path, "en"))
+          kind: "scanned" as const, entries: measure("sort", () => entries.filter(matcher.accepts).sort((a, b) => a.path.localeCompare(b.path, "en")), 0, entries.length)
         }
       }
       const project = yield* owner.project(request.root)
@@ -58,6 +59,7 @@ export function makeGlobBackend(owner: Owner, options: Glob.Options): Backend {
       const entries = new Map<string, Entry>()
       const linkNames = new Set<string>()
       const decode = (files: typeof result.files) => Effect.try({ try: () => {
+        const start = begin()
         for (const file of files) {
           if (typeof file === "string") throw new Error("Typed query returned name-only rows")
           if (request.metadata && (typeof file.size !== "number" || typeof file.mtime_ms !== "number")) throw new Error("Watchman omitted requested metadata")
@@ -65,6 +67,7 @@ export function makeGlobBackend(owner: Owner, options: Glob.Options): Backend {
           entries.set(entry.path, entry)
           if (entry.type === "SymbolicLink") linkNames.add(entry.path)
         }
+        end("lexical", start, 0, files.length)
       }, catch: failure })
       yield* decode(result.files)
       if (request.symlinks === "follow" || request.symlinks === "glob") {
@@ -114,7 +117,7 @@ export function makeGlobBackend(owner: Owner, options: Glob.Options): Backend {
           return globView(request, [...entries.values()], signal)
         }, catch: failure })
         : [...entries.values()].filter(matcher.accepts)
-      selected.sort((a, b) => a.path.localeCompare(b.path, "en"))
+      measure("sort", () => selected.sort((a, b) => a.path.localeCompare(b.path, "en")), 0, selected.length)
       const common = { complete: true as const, source: "watchman" as const, coverage: request.coverage ?? "filesystem", entries: selected }
       if (supplemented) return { ...common, kind: "scanned" as const }
       const checkpoint = { [CheckpointTypeId]: true as const }

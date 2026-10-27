@@ -1,5 +1,6 @@
 import { createConnection, type Socket } from "node:net"
 import { Schema } from "effect"
+import { begin, count, end, measure, retained } from "./Diagnostics.js"
 
 const Reply = Schema.Struct({
   version: Schema.optional(Schema.String),
@@ -109,7 +110,9 @@ export class Connection {
 
   command(command: ReadonlyArray<unknown>, key: string, value: string | undefined, signal: AbortSignal, timeout = this.options.requestTimeoutMs ?? 3000, queueTimeout = this.options.queueTimeoutMs ?? timeout): Promise<Reply> {
     return this.request(command, signal, timeout, queueTimeout, (input) => {
+      const start = begin()
       const reply = Schema.decodeUnknownSync(Reply)(input)
+      end("schema", start, 0, reply.files?.length ?? 0)
       const decoded = Reflect.get(reply, key)
       if (typeof decoded !== "string" || (value !== undefined && decoded !== value)) throw new Error(`Watchman mismatched ${key} response`)
       return reply
@@ -119,7 +122,9 @@ export class Connection {
   query(command: ReadonlyArray<unknown>, signal: AbortSignal, timeout: number, maxBytes: number): Promise<QueryReply> {
     return this.request(command, signal, timeout, this.options.queueTimeoutMs ?? timeout, (input, bytes) => {
       if (bytes > maxBytes) throw new Error("Watchman query result-byte budget exceeded")
+      const start = begin()
       const reply = Schema.decodeUnknownSync(QueryReply)(input)
+      end("schema", start, bytes, reply.files.length)
       if (reply.warning) throw new Error(`Watchman cannot guarantee a complete baseline: ${reply.warning}`)
       return reply
     }, false)
@@ -187,18 +192,25 @@ export class Connection {
 
   private receive(chunk: Buffer): void {
     if (this.terminal) return
-    this.buffer = Buffer.concat([this.buffer, chunk])
+    const receive = begin()
+    try {
+    count("receivedBytes", chunk.length)
+    this.buffer = measure("copy", () => Buffer.concat([this.buffer, chunk]), this.buffer.length + chunk.length)
+    count("copiedBytes", this.buffer.length)
+    retained(this.buffer.length, 1)
     const limit = this.options.maxFrameBytes ?? 1024 * 1024
     while (!this.terminal) {
-      const end = this.buffer.indexOf(10)
-      if (end < 0) { if (this.buffer.length > limit) this.fail(new Error("Watchman frame overflow")); return }
-      if (end > limit) { this.fail(new Error("Watchman frame overflow")); return }
-      const bytes = this.buffer.subarray(0, end)
-      this.buffer = this.buffer.subarray(end + 1)
+      const newline = measure("framing", () => this.buffer.indexOf(10), this.buffer.length)
+      count("scannedBytes", newline < 0 ? this.buffer.length : newline + 1)
+      if (newline < 0) { if (this.buffer.length > limit) this.fail(new Error("Watchman frame overflow")); return }
+      if (newline > limit) { this.fail(new Error("Watchman frame overflow")); return }
+      const bytes = this.buffer.subarray(0, newline)
+      this.buffer = this.buffer.subarray(newline + 1)
+      count("frames", 1)
       try {
-        const frame = new TextDecoder("utf-8", { fatal: true }).decode(bytes)
-        const input = Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Unknown))(frame)
-        const envelope = Schema.decodeUnknownSync(Envelope)(input)
+        const frame = measure("utf8", () => new TextDecoder("utf-8", { fatal: true }).decode(bytes), bytes.length)
+        const input = measure("json", () => Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Unknown))(frame), bytes.length)
+        const envelope = measure("envelope", () => Schema.decodeUnknownSync(Envelope)(input), bytes.length)
         // Cancellation must win over ordinary unilateral subscription delivery.
         if (envelope.canceled) {
           if (!envelope.subscription) { this.fail(new Error("Watchman cancellation omitted subscription")); return }
@@ -208,7 +220,9 @@ export class Connection {
           continue
         }
         if (envelope.subscription) {
+          const start = begin()
           const reply = Schema.decodeUnknownSync(Reply)(input)
+          end("schema", start, bytes.length, reply.files?.length ?? 0)
           this.listeners.get(envelope.subscription)?.push(reply)
           continue
         }
@@ -220,6 +234,7 @@ export class Connection {
         this.sendNext()
       } catch (error) { this.fail(error instanceof Error ? error : new Error(String(error))) }
     }
+    } finally { end("receive", receive, chunk.length) }
   }
 }
 

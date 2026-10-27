@@ -12,6 +12,7 @@ import type { Owner, Session } from "./Owner.js"
 import type { Glob } from "./Glob.js"
 import { lexicalEntry, queryLexical } from "./GlobBackend.js"
 import { safeName } from "./Selection.js"
+import { begin, end, measure } from "./Diagnostics.js"
 
 export const fileSystem = Effect.flatMap(FileSystem.FileSystem, (fs) => supports(fs)
   ? Effect.succeed(fs[TypeId])
@@ -98,10 +99,11 @@ export function makeInventorySource(owner: Owner, options: Glob.Options): Invent
             const result = await queryLexical(session, root, subtree, { root: profile.root, metadata: true }, ["**/*"], [], false,
               { ...options, maxQueryBytes: budgets.maxBaselineBytes }, signal)
             signal.throwIfAborted()
-            const entries = result.files.map((file) => {
+            const entries = measure("lexical", () => result.files.map((file) => {
               if (typeof file === "string") throw new Error("Typed inventory query returned name-only rows")
               return lexicalEntry(file)
-            }).sort((a, b) => a.path.localeCompare(b.path, "en"))
+            }), 0, result.files.length)
+            measure("sort", () => entries.sort((a, b) => a.path.localeCompare(b.path, "en")), 0, entries.length)
             const name = owner.nextName()
             lease = { session, root, name }
             let attaching = true
@@ -129,6 +131,7 @@ export function makeInventorySource(owner: Owner, options: Glob.Options): Invent
                 }
                 if (fresh) return
                 const changes: InventoryChange[] = []
+                const start = begin()
                 try {
                   for (const file of reply.files ?? []) {
                     const path = safeName(file.name)
@@ -136,6 +139,7 @@ export function makeInventorySource(owner: Owner, options: Glob.Options): Invent
                     changes.push(file.exists ? { type: "present", entry: lexicalEntry(file) } : { type: "removed", path })
                   }
                 } catch (error) { terminate(error instanceof Error ? error : new Error(String(error))); return }
+                finally { end("lexical", start, 0, reply.files?.length ?? 0) }
                 if (!changes.length) return
                 const event: InventoryEvent = { type: "changes", epoch, sequence: ++sequence, changes }
                 if (!attaching) { failures = 0; publish(event); return }
