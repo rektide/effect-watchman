@@ -122,3 +122,8 @@ Without `WATCHMAN_TEST_BINARY`, live tests skip. The live fixture covers public
 ordinary/enhanced watches, changes/deletions, scope/ignore selection, atomic save
 then later edit, sibling release, no initial inventory and read-only quietness.
 See [HANDOFF.md](HANDOFF.md) for verified daemon version and remaining limits.
+# Observed inventory
+
+`Inventory.fileSystem` exposes the scoped source installed by `Glob.layer` and
+`Watchman.layerWithGlob`: a clock-joined baseline, epoch-tagged live changes and
+explicit invalidation/rebaseline. See the [Gate A API and receipt](doc/inventory/observed-source0.sol61x.md).

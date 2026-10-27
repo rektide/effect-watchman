@@ -9,6 +9,7 @@ import type { ConnectionOptions } from "./Connection.js"
 import type { RecoveryOptions } from "./Owner.js"
 import { Recovery } from "./Recovery.js"
 import { compileIgnore, resolveIgnore, type IgnoreOptions } from "./Ignore.js"
+import { Inventory } from "./Inventory.js"
 
 export { backendLayer } from "./Backend.js"
 export { defaultIgnores, resolveIgnore, type IgnoreOptions } from "./Ignore.js"
@@ -121,5 +122,5 @@ export const layerWithGlob = (options: Glob.Options & IgnoreOptions) => Layer.ef
   const { ignore, ...raw } = options
   const owner = yield* makeOwner({ ...ownerOptions(raw), defaultIgnores: false })
   const enhanced = make(fs, path, makeBackend(owner), options)
-  return Glob.make(enhanced, makeGlobBackend(owner, options), () => process.cwd())
+  return Object.assign(Glob.make(enhanced, makeGlobBackend(owner, options), () => process.cwd()), { [Inventory.TypeId]: Inventory.makeInventorySource(owner, options) })
 }))

@@ -57,7 +57,7 @@ export const makeOwner = (options: Options) => Effect.gen(function*() {
   })
   const wake = yield* Queue.sliding<void>(1)
   const clock = yield* Clock.Clock
-  const interests = new Map<Interest, { abort: AbortController; generation: number }>()
+  const interests = new Map<Interest, { abort: AbortController; generation: number; revision: number }>()
   let active: Session | undefined
   let candidate: Connection | undefined
   let generation = 0
@@ -130,6 +130,7 @@ export const makeOwner = (options: Options) => Effect.gen(function*() {
       for (const [interest, slot] of interests) {
         if (active !== session) break
         if (slot.generation === session.generation) continue
+        const revision = slot.revision
         const result = yield* Effect.tryPromise({
           try: (signal) => interest.attach(session, AbortSignal.any([signal, slot.abort.signal])),
           catch: (error) => error instanceof Error ? error : new Error(String(error))
@@ -141,7 +142,8 @@ export const makeOwner = (options: Options) => Effect.gen(function*() {
           interest.fail(result.failure)
           continue
         }
-        slot.generation = session.generation
+        slot.generation = revision === slot.revision ? session.generation : 0
+        if (slot.generation === 0) Queue.offerUnsafe(wake, undefined)
       }
       if (active !== session) continue
       if (state !== "healthy") healthySince = yield* Clock.currentTimeMillis
@@ -169,10 +171,17 @@ export const makeOwner = (options: Options) => Effect.gen(function*() {
     nextName: () => `effect-watchman-${++serial}`,
     retain: (interest: Interest) => {
       if (closed) { interest.fail(new Error("Watchman owner scope closed")); return () => {} }
-      const slot = { abort: new AbortController(), generation: 0 }
+      const slot = { abort: new AbortController(), generation: 0, revision: 0 }
       interests.set(interest, slot)
       Queue.offerUnsafe(wake, undefined)
       return () => { interests.delete(interest); slot.abort.abort() }
+    },
+    refresh: (interest: Interest) => {
+      const slot = interests.get(interest)
+      if (!slot) return
+      slot.revision++
+      slot.generation = 0
+      Queue.offerUnsafe(wake, undefined)
     },
     scope: (target: string) => Effect.tryPromise({ try: async () => {
       current()
@@ -196,6 +205,7 @@ export const makeOwner = (options: Options) => Effect.gen(function*() {
     project: (target: string, expected?: Session) => Effect.tryPromise({ try: async () => {
       const session = expected ?? current()
       const canonical = await realpath(resolve(target))
+      if (!(await stat(canonical)).isDirectory()) throw new Error("Query target must be a directory")
       const root = approved?.filter((root) => contains(root, canonical)).sort((a, b) => b.length - a.length)[0]
       if (approved && !root) throw new Error("Target is outside approved Watchman acquisition roots")
       const acquisition = root ?? canonical

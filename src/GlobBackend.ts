@@ -7,6 +7,8 @@ import { badArgument, contains, failure, type Owner } from "./Owner.js"
 import type { Options } from "./Owner.js"
 import { safeName, selection } from "./Selection.js"
 import type { Glob } from "./Glob.js"
+import type { QueryReply } from "./Connection.js"
+import type { Session } from "./Owner.js"
 
 /** Daemon query budgets are deliberately separate from watch command deadlines. */
 export function ownerOptions(options: Glob.Options): Options {
@@ -15,7 +17,6 @@ export function ownerOptions(options: Glob.Options): Options {
 }
 
 export function makeGlobBackend(owner: Owner, options: Glob.Options): Backend {
-  const checkpoints = new WeakMap<object, { root: string; request: Request; clock: string }>()
   return {
     enumerate: (request) => Effect.gen(function*() {
       const timeout = options.queryTimeoutMs ?? 65_000
@@ -51,17 +52,7 @@ export function makeGlobBackend(owner: Owner, options: Glob.Options): Backend {
       if (!root || !contains(root, project.canonical)) return yield* Effect.fail(failure("Watchman root does not contain query directory"))
       const subtree = relative(root, project.canonical)
       const query = (globs: ReadonlyArray<string>, links: boolean) => Effect.tryPromise({
-        try: (signal) => project.session.connection.query(["query", root, {
-          ...(subtree ? { relative_root: subtree } : {}),
-          glob: globs,
-          glob_includedotfiles: true,
-          glob_noescape: false,
-          case_sensitive: !request.nocase,
-          expression: ["allof", ["exists"], ...(links ? [["type", "l"]] : []),
-            ...matcher.literalExcludes.map((name) => ["not", ["anyof", ["name", name, "wholename"], ["dirname", name]]])],
-          fields: ["name", "type", ...(request.metadata ? ["size", "mtime_ms"] : [])],
-          sync_timeout: sync, lock_timeout: lock
-        }], signal, timeout, options.maxQueryBytes ?? 32 * 1024 * 1024), catch: failure
+        try: (signal) => queryLexical(project.session, root, subtree, request, globs, matcher.literalExcludes, links, options, signal), catch: failure
       })
       const result = yield* query(matcher.candidates, false)
       const entries = new Map<string, Entry>()
@@ -69,12 +60,10 @@ export function makeGlobBackend(owner: Owner, options: Glob.Options): Backend {
       const decode = (files: typeof result.files) => Effect.try({ try: () => {
         for (const file of files) {
           if (typeof file === "string") throw new Error("Typed query returned name-only rows")
-          const name = safeName(file.name)
-          if (!["f", "d", "l", "b", "c", "p", "s", "D"].includes(file.type)) throw new Error("Unknown Watchman entry type")
           if (request.metadata && (typeof file.size !== "number" || typeof file.mtime_ms !== "number")) throw new Error("Watchman omitted requested metadata")
-          const type = file.type === "f" ? "File" : file.type === "d" ? "Directory" : file.type === "l" ? "SymbolicLink" : "Other"
-          entries.set(name, { path: name, type, ...(request.metadata ? { size: file.size ?? undefined, mtimeMs: file.mtime_ms ?? undefined } : {}) })
-          if (type === "SymbolicLink") linkNames.add(name)
+          const entry = lexicalEntry(file, request.metadata ?? false)
+          entries.set(entry.path, entry)
+          if (entry.type === "SymbolicLink") linkNames.add(entry.path)
         }
       }, catch: failure })
       yield* decode(result.files)
@@ -129,8 +118,26 @@ export function makeGlobBackend(owner: Owner, options: Glob.Options): Backend {
       const common = { complete: true as const, source: "watchman" as const, coverage: request.coverage ?? "filesystem", entries: selected }
       if (supplemented) return { ...common, kind: "scanned" as const }
       const checkpoint = { [CheckpointTypeId]: true as const }
-      checkpoints.set(checkpoint, { root, request, clock: result.clock })
       return { ...common, kind: "checkpointed" as const, checkpoint }
     })
   }
+}
+
+export function queryLexical(session: Session, root: string, subtree: string, request: Request,
+  globs: ReadonlyArray<string>, excludes: ReadonlyArray<string>, links: boolean, options: Glob.Options, signal: AbortSignal): Promise<QueryReply> {
+  return session.connection.query(["query", root, {
+    ...(subtree ? { relative_root: subtree } : {}), glob: globs, glob_includedotfiles: true, glob_noescape: false,
+    case_sensitive: !request.nocase,
+    expression: ["allof", ["exists"], ...(links ? [["type", "l"]] : []),
+      ...excludes.map((name) => ["not", ["anyof", ["name", name, "wholename"], ["dirname", name]]])],
+    fields: ["name", "type", ...(request.metadata ? ["size", "mtime_ms"] : [])],
+    sync_timeout: options.querySyncTimeoutMs ?? 30_000, lock_timeout: options.queryLockTimeoutMs ?? 30_000
+  }], signal, options.queryTimeoutMs ?? 65_000, options.maxQueryBytes ?? 32 * 1024 * 1024)
+}
+
+export function lexicalEntry(file: { readonly name: string; readonly type?: string | undefined; readonly size?: number | null | undefined; readonly mtime_ms?: number | null | undefined }, metadata = true): Entry {
+  const path = safeName(file.name)
+  if (!["f", "d", "l", "b", "c", "p", "s", "D"].includes(file.type ?? "")) throw new Error("Unknown Watchman entry type")
+  return { path, type: file.type === "f" ? "File" : file.type === "d" ? "Directory" : file.type === "l" ? "SymbolicLink" : "Other",
+    ...(metadata ? { size: file.size ?? undefined, mtimeMs: file.mtime_ms ?? undefined } : {}) }
 }

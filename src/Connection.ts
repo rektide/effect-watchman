@@ -13,7 +13,10 @@ const Reply = Schema.Struct({
   canceled: Schema.optional(Schema.Boolean),
   is_fresh_instance: Schema.optional(Schema.Boolean),
   files: Schema.optional(Schema.Array(Schema.Struct({
-    name: Schema.String, exists: Schema.Boolean, new: Schema.optional(Schema.Boolean)
+    name: Schema.String, exists: Schema.Boolean, new: Schema.optional(Schema.Boolean),
+    type: Schema.optional(Schema.String),
+    size: Schema.optional(Schema.NullOr(Schema.Number)),
+    mtime_ms: Schema.optional(Schema.NullOr(Schema.Number))
   })))
 })
 export type Reply = typeof Reply.Type

@@ -7,6 +7,7 @@ import type { RecoveryOptions } from "./Owner.js"
 import { make } from "./Enumeration.js"
 import { makeGlobBackend, ownerOptions } from "./GlobBackend.js"
 import { makeOwner } from "./Owner.js"
+import { Inventory } from "./Inventory.js"
 
 export interface Options extends ConnectionOptions, RecoveryOptions {
   /** Exact, explicit daemon acquisition boundaries. Must be absolute. */
@@ -21,5 +22,5 @@ export interface Options extends ConnectionOptions, RecoveryOptions {
 export const layer = (options: Options) => Layer.effect(FileSystem.FileSystem, Effect.gen(function*() {
   const fs = yield* FileSystem.FileSystem
   const owner = yield* makeOwner(ownerOptions(options))
-  return make(fs, makeGlobBackend(owner, options), () => process.cwd())
+  return Object.assign(make(fs, makeGlobBackend(owner, options), () => process.cwd()), { [Inventory.TypeId]: Inventory.makeInventorySource(owner, options) })
 }))
