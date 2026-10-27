@@ -132,3 +132,5 @@ explicit invalidation/rebaseline. Baseline entries have no array-order promise;
 membership, lexical metadata and epoch are authoritative. Changes retain their
 frame order and per-epoch sequence. Finite `enumerate`/`glob` remains sorted and
 deduplicated. See the [Gate A API and receipt](doc/inventory/observed-source0.sol61x.md).
+The [S1 materialization checkpoint](doc/inventory/source-materialization-s1.sol61x.md)
+records linear JSON framing, phase attribution and the remaining synchronous-work limit.
