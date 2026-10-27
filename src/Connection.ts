@@ -1,6 +1,7 @@
 import { createConnection, type Socket } from "node:net"
 import { Schema } from "effect"
-import { begin, count, end, measure, retained } from "./Diagnostics.js"
+import { begin, end, measure } from "./Diagnostics.js"
+import { Framing } from "./Framing.js"
 
 const Reply = Schema.Struct({
   version: Schema.optional(Schema.String),
@@ -39,6 +40,11 @@ export const ConfigReply = Schema.Struct({ config: Schema.Struct({
   ignore_dirs: Schema.optional(Schema.Array(Schema.String)),
   ignore_vcs: Schema.optional(Schema.Array(Schema.String))
 }) })
+const decodeReply = Schema.decodeUnknownSync(Reply)
+const decodeEnvelope = Schema.decodeUnknownSync(Envelope)
+const decodeQuery = Schema.decodeUnknownSync(QueryReply)
+const decodeConfig = Schema.decodeUnknownSync(ConfigReply)
+const decodeJson = Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Unknown))
 
 export interface ConnectionOptions {
   readonly socketPath: string
@@ -64,12 +70,15 @@ interface Command {
 export class Connection {
   readonly listeners = new Map<string, { push: (reply: Reply) => void; fail: (error: Error) => void }>()
   private socket: Socket | undefined
-  private buffer = Buffer.alloc(0)
+  private readonly framing: Framing
+  private readonly utf8 = new TextDecoder("utf-8", { fatal: true })
   private terminal: Error | undefined
   private pending: Command | undefined
   private queue: Array<Command> = []
 
-  constructor(readonly options: ConnectionOptions, readonly onFailure: (error: Error) => void = () => {}) {}
+  constructor(readonly options: ConnectionOptions, readonly onFailure: (error: Error) => void = () => {}) {
+    this.framing = new Framing(options.maxFrameBytes ?? 1024 * 1024)
+  }
 
   get idle(): boolean { return !this.pending && this.queue.length === 0 }
 
@@ -100,7 +109,7 @@ export class Connection {
     this.queue = []
     for (const listener of this.listeners.values()) listener.fail(error)
     this.listeners.clear()
-    this.buffer = Buffer.alloc(0)
+    this.framing.close()
     this.socket?.destroy()
     this.onFailure(error)
   }
@@ -111,7 +120,7 @@ export class Connection {
   command(command: ReadonlyArray<unknown>, key: string, value: string | undefined, signal: AbortSignal, timeout = this.options.requestTimeoutMs ?? 3000, queueTimeout = this.options.queueTimeoutMs ?? timeout): Promise<Reply> {
     return this.request(command, signal, timeout, queueTimeout, (input) => {
       const start = begin()
-      const reply = Schema.decodeUnknownSync(Reply)(input)
+      const reply = decodeReply(input)
       end("schema", start, 0, reply.files?.length ?? 0)
       const decoded = Reflect.get(reply, key)
       if (typeof decoded !== "string" || (value !== undefined && decoded !== value)) throw new Error(`Watchman mismatched ${key} response`)
@@ -123,7 +132,7 @@ export class Connection {
     return this.request(command, signal, timeout, this.options.queueTimeoutMs ?? timeout, (input, bytes) => {
       if (bytes > maxBytes) throw new Error("Watchman query result-byte budget exceeded")
       const start = begin()
-      const reply = Schema.decodeUnknownSync(QueryReply)(input)
+      const reply = decodeQuery(input)
       end("schema", start, bytes, reply.files.length)
       if (reply.warning) throw new Error(`Watchman cannot guarantee a complete baseline: ${reply.warning}`)
       return reply
@@ -132,7 +141,7 @@ export class Connection {
 
   config(root: string, signal: AbortSignal): Promise<typeof ConfigReply.Type> {
     return this.request(["get-config", root], signal, this.options.requestTimeoutMs ?? 3000, this.options.queueTimeoutMs ?? this.options.requestTimeoutMs ?? 3000,
-      (input) => Schema.decodeUnknownSync(ConfigReply)(input))
+      (input) => decodeConfig(input))
   }
 
   private request<A>(command: ReadonlyArray<unknown>, signal: AbortSignal, timeout: number, queueTimeout: number,
@@ -194,47 +203,35 @@ export class Connection {
     if (this.terminal) return
     const receive = begin()
     try {
-    count("receivedBytes", chunk.length)
-    this.buffer = measure("copy", () => Buffer.concat([this.buffer, chunk]), this.buffer.length + chunk.length)
-    count("copiedBytes", this.buffer.length)
-    retained(this.buffer.length, 1)
-    const limit = this.options.maxFrameBytes ?? 1024 * 1024
-    while (!this.terminal) {
-      const newline = measure("framing", () => this.buffer.indexOf(10), this.buffer.length)
-      count("scannedBytes", newline < 0 ? this.buffer.length : newline + 1)
-      if (newline < 0) { if (this.buffer.length > limit) this.fail(new Error("Watchman frame overflow")); return }
-      if (newline > limit) { this.fail(new Error("Watchman frame overflow")); return }
-      const bytes = this.buffer.subarray(0, newline)
-      this.buffer = this.buffer.subarray(newline + 1)
-      count("frames", 1)
-      try {
-        const frame = measure("utf8", () => new TextDecoder("utf-8", { fatal: true }).decode(bytes), bytes.length)
-        const input = measure("json", () => Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Unknown))(frame), bytes.length)
-        const envelope = measure("envelope", () => Schema.decodeUnknownSync(Envelope)(input), bytes.length)
+      this.framing.write(chunk, (bytes) => {
+        const frame = measure("utf8", () => this.utf8.decode(bytes), bytes.length)
+        const input = measure("json", () => decodeJson(frame), bytes.length)
+        const envelope = measure("envelope", () => decodeEnvelope(input), bytes.length)
         // Cancellation must win over ordinary unilateral subscription delivery.
         if (envelope.canceled) {
-          if (!envelope.subscription) { this.fail(new Error("Watchman cancellation omitted subscription")); return }
+          if (!envelope.subscription) { this.fail(new Error("Watchman cancellation omitted subscription")); return false }
           const listener = this.listeners.get(envelope.subscription)
           this.listeners.delete(envelope.subscription)
           listener?.fail(new SubscriptionCanceled("Watchman subscription canceled"))
-          continue
+          return !this.terminal
         }
         if (envelope.subscription) {
           const start = begin()
-          const reply = Schema.decodeUnknownSync(Reply)(input)
+          const reply = decodeReply(input)
           end("schema", start, bytes.length, reply.files?.length ?? 0)
           this.listeners.get(envelope.subscription)?.push(reply)
-          continue
+          return !this.terminal
         }
         const pending = this.pending
-        if (!pending) { this.fail(new Error("Watchman unsolicited response")); return }
-        if (envelope.error) { this.pending = undefined; pending.reject(new Error(envelope.error)); this.sendNext(); continue }
+        if (!pending) { this.fail(new Error("Watchman unsolicited response")); return false }
+        if (envelope.error) { this.pending = undefined; pending.reject(new Error(envelope.error)); this.sendNext(); return !this.terminal }
         this.pending = undefined
         pending.resolve(input, bytes.length)
         this.sendNext()
-      } catch (error) { this.fail(error instanceof Error ? error : new Error(String(error))) }
-    }
-    } finally { end("receive", receive, chunk.length) }
+        return !this.terminal
+      })
+    } catch (error) { this.fail(error instanceof Error ? error : new Error(String(error))) }
+    finally { end("receive", receive, chunk.length) }
   }
 }
 
