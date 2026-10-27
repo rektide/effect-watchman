@@ -17,7 +17,7 @@
 		"build": "tsgo -p tsconfig.build.json",
 		"typecheck": "tsgo --noEmit -p tsconfig.json",
 		"test": "bun test ./test",
-		"test:daemon": "bun test ./test/daemon.test.ts ./test/enumeration.test.ts"
+		"test:daemon": "bun test ./test/daemon.test.ts ./test/enumeration.test.ts ./test/observed.test.ts"
 	},
 	"peerDependencies": {
 		"effect": "4.0.1"
