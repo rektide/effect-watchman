@@ -7,6 +7,8 @@ status: active
 author: GPT-6.1 Sol xhigh
 date: 2026-10-19
 sources:
+  - resource: "opencode://ses_e809723ffffe8kD6j9UHE5XIV7"
+    title: Clarify observed baseline membership versus finite enumeration ordering for source-materialization S1
   - resource: "opencode://ses_e87038c1affeHRNE9v4Ggec0Sl"
     title: Document additive recovery signals and the replaced shared-owner terminal-loss behavior
   - resource: "opencode://ses_ead2c9a29fferY0Og3JRINkhz4"
@@ -126,4 +128,7 @@ See [HANDOFF.md](HANDOFF.md) for verified daemon version and remaining limits.
 
 `Inventory.fileSystem` exposes the scoped source installed by `Glob.layer` and
 `Watchman.layerWithGlob`: a clock-joined baseline, epoch-tagged live changes and
-explicit invalidation/rebaseline. See the [Gate A API and receipt](doc/inventory/observed-source0.sol61x.md).
+explicit invalidation/rebaseline. Baseline entries have no array-order promise;
+membership, lexical metadata and epoch are authoritative. Changes retain their
+frame order and per-epoch sequence. Finite `enumerate`/`glob` remains sorted and
+deduplicated. See the [Gate A API and receipt](doc/inventory/observed-source0.sol61x.md).

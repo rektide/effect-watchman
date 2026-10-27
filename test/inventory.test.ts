@@ -87,6 +87,30 @@ test("public observed source joins query clock, stages before ack and classifies
   expect(fixture.commands.at(-1)?.command[0]).toBe("unsubscribe")
 })
 
+test("observed membership preserves source row order; finite enumeration still sorts and deduplicates", async () => {
+  await using fixture = await peer()
+  const common = fixture.state.respond
+  const names = ["z.ts", "é.ts", "A.ts", "a.ts", "10.ts", "2.ts", "_x.ts"]
+  let queries = 0
+  fixture.state.respond = (command, socket) => {
+    if (command[0] !== "query") { common(command, socket); return }
+    send(socket, { clock: "c:1:2", files: [...names, ...(queries++ ? ["z.ts"] : [])].map((name) => ({ name, type: "f", size: null, mtime_ms: null })) })
+  }
+  await Effect.runPromise(Effect.scoped(Effect.gen(function*() {
+    const source = yield* Inventory.fileSystem
+    const view = yield* source.open({ root: fixture.root })
+    const events = yield* view.events.pipe(Stream.take(1), Stream.runCollect)
+    const baseline = events[0]
+    if (baseline?.type !== "baseline") throw new Error("Missing baseline")
+    expect(baseline.entries.map((entry) => entry.path)).toEqual(names)
+    expect(new Set(baseline.entries.map((entry) => entry.path))).toEqual(new Set(names))
+    expect(baseline.entries.every((entry) => entry.type === "File" && entry.size === undefined && entry.mtimeMs === undefined)).toBe(true)
+    const fs = yield* Glob.fileSystem
+    const finite = yield* fs.enumerate({ root: fixture.root, patterns: ["*.ts"], coverage: "daemon" })
+    expect(finite.entries.map((entry) => entry.path)).toEqual([...names].sort((a, b) => a.localeCompare(b, "en")))
+  })).pipe(Effect.provide(fixture.layer)))
+})
+
 test("fresh pre-ack frames reject every row, retry boundedly, and keep the shared owner usable", async () => {
   await using fixture = await peer()
   const common = fixture.state.respond

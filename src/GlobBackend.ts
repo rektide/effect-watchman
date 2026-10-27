@@ -11,6 +11,8 @@ import type { QueryReply } from "./Connection.js"
 import type { Session } from "./Owner.js"
 import { begin, end, measure } from "./Diagnostics.js"
 
+const compare = new Intl.Collator("en").compare
+
 /** Daemon query budgets are deliberately separate from watch command deadlines. */
 export function ownerOptions(options: Glob.Options): Options {
   const { queryTimeoutMs, querySyncTimeoutMs, queryLockTimeoutMs, maxQueryBytes, ...owner } = options
@@ -45,7 +47,7 @@ export function makeGlobBackend(owner: Owner, options: Glob.Options): Backend {
         }, catch: failure })
         return {
           complete: true as const, source: "watchman" as const, coverage: request.coverage ?? "filesystem",
-          kind: "scanned" as const, entries: measure("sort", () => entries.filter(matcher.accepts).sort((a, b) => a.path.localeCompare(b.path, "en")), 0, entries.length)
+          kind: "scanned" as const, entries: measure("sort", () => entries.filter(matcher.accepts).sort((a, b) => compare(a.path, b.path)), 0, entries.length)
         }
       }
       const project = yield* owner.project(request.root)
@@ -117,7 +119,7 @@ export function makeGlobBackend(owner: Owner, options: Glob.Options): Backend {
           return globView(request, [...entries.values()], signal)
         }, catch: failure })
         : [...entries.values()].filter(matcher.accepts)
-      measure("sort", () => selected.sort((a, b) => a.path.localeCompare(b.path, "en")), 0, selected.length)
+      measure("sort", () => selected.sort((a, b) => compare(a.path, b.path)), 0, selected.length)
       const common = { complete: true as const, source: "watchman" as const, coverage: request.coverage ?? "filesystem", entries: selected }
       if (supplemented) return { ...common, kind: "scanned" as const }
       const checkpoint = { [CheckpointTypeId]: true as const }

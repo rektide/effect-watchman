@@ -103,7 +103,6 @@ export function makeInventorySource(owner: Owner, options: Glob.Options): Invent
               if (typeof file === "string") throw new Error("Typed inventory query returned name-only rows")
               return lexicalEntry(file)
             }), 0, result.files.length)
-            measure("sort", () => entries.sort((a, b) => a.path.localeCompare(b.path, "en")), 0, entries.length)
             const name = owner.nextName()
             lease = { session, root, name }
             let attaching = true
