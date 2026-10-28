@@ -131,11 +131,13 @@ function dirent(entry: Entry, parentPath: string) {
 
 function stats(entry: Entry): Stats {
   const date = new Date(entry.mtimeMs ?? 0)
+  // The Temporal *Instant members are required under @types/node >= 26 and absent under
+  // older bands; the double assertion keeps this literal compilable across both.
   return {
     ...dirent(entry, ""), dev: 0, ino: 0, mode: 0, nlink: 1, uid: 0, gid: 0, rdev: 0,
     size: entry.size ?? 0, blksize: 4096, blocks: 0,
     atimeMs: 0, mtimeMs: entry.mtimeMs ?? 0, ctimeMs: 0, birthtimeMs: 0,
     atime: date, mtime: date, ctime: date, birthtime: date,
     atimeInstant: undefined, mtimeInstant: undefined, ctimeInstant: undefined, birthtimeInstant: undefined
-  }
+  } as unknown as Stats
 }
