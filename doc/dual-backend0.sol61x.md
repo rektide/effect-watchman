@@ -1,15 +1,15 @@
 ---
 type: ImplementationReceipt
 title: Selectable JSON and BSER Watchman wire backends
-description: JSON-default client extraction cutover, BSER v1 peer connection, proposed interface/dependency ledger, explicit lossy-text policy, dual-backend correctness and real-daemon evidence, and an unresolved upstream JSON log-classifier gap.
+description: JSON-default dual wire backends, the human-approved interface ledger and permanent lossy-BSER policy, published JSON client with log parity, and dual-backend correctness and real-daemon evidence.
 resource: /doc/dual-backend0.sol61x.md
-status: locally implemented and verified; human interface and strictness sign-off pending; log-classifier parity incomplete; no push or publication
+status: human-approved ledger and permanent BSER degradation; published JSON client and verified log parity; effect-watchman main publication authorized
 author: GPT-6.1 Sol
 model: openai/gpt-6.1-sol#xhigh
 date: 2026-10-28
 sources:
   - resource: "opencode://ses_e7c90f1d6ffeviS28mp5Msdsk1"
-    title: Commission and implement JSON-default dual wire backends; preserve ownership/failure tests, verify daemon pairing and recovery, correct a real test-readiness race, and return interface/strictness/publication decisions without pushing
+    title: Build and verify dual backends, then record human approval of all nine ledger items and permanent BSER degradation; fix/publish the JSON client, adopt its GitHub revision, verify parity, and carry the authorized effect-watchman main publication
   - resource: "file:///home/rektide/src/watchman-client-json/README.md"
     title: Extracted public wire seam, cleanup boundary, cancellation ownership and failure scopes
   - resource: "file:///home/rektide/src/watchman-client-json/doc/extraction0.sol61x.md"
@@ -52,14 +52,74 @@ sources:
     title: Consumer-facing wire choice and limitations
   - resource: /ENUMERATION.md
     title: Representation-dependent budgets and unchanged query/finite-result semantics
+  - resource: "https://github.com/rektide/effect-watchman/commit/17af68f3f0eef5136901f25c07349fccefb99df7"
+    title: Independently published Stats type-band fix found on main before delivery; inspected and preserved without rewriting it
 verification:
   method: Bun 1.4.4 scripted dual-wire peers, deterministic BSER framing splits, ten focused repetitions, private stock-daemon suites and repeated retained-view restart, tsgo build/typecheck and consumer-only source typecheck
-  scope: Linux x64, explicit private /usr/local/bin/watchman-facebook instances; no independent review, hostile-codec audit, integration performance measurement, host changes or externally installable release
+  scope: Linux x64, explicit private /usr/local/bin/watchman-facebook instances and GitHub source publication; no independent review, hostile-codec audit, integration performance measurement, npm release or host dependency refresh
 ---
 
 # Dual-backend receipt
 
-## Outcome and scope
+## 2026-10-28 human sign-off and publication addendum
+
+**The human approved all nine ledger items as implemented.** BSER's lossy UTF-8
+degradation is **accepted**, with its fatal-text skip a permanent documented
+marker; no codec fork. JSON remains default. Publication of the JSON client,
+replacement of its local dependency link, the JSON log-routing correction and
+the fast-forward push of effect-watchman's `main` were explicitly authorized.
+The original checkpoint/ledger below is preserved as history; its pending-policy,
+unpublished-dependency and open-log-gap statements are superseded here.
+
+- Published public repository: [rektide/watchman-client-json](https://github.com/rektide/watchman-client-json).
+  `main` was pushed and independently read back as
+  **`e88f258ba142b8de18d931b930818678507dad49`** (`fix(wire): ignore unilateral
+  logs without consuming command replies`). Authentication was checked as
+  `rektide`, SSH; the repository did not exist before creation. Its description
+  and topics identify the raw-TypeScript, no-build family. No npm publication
+  or version bump; client remains **0.1.0**.
+- JSON now recognizes optional string `Envelope.log` and ignores logs after
+  cancellation/named-subscription routing and before the normal-reply slot.
+  There is no retained log queue/user logger. Malformed metadata remains terminal.
+  BSER uses that same Envelope schema; the JSON-only log-parity skip is removed.
+  The client keeper proves logs before, between and after replies do not settle
+  commands, including an empty log string and an idle connection.
+- Effect-watchman code/dependency checkpoint:
+  **`8f01070c269ccca706fad7272aa9f8eaa2cb59ac`** (`fix(wire): match JSON log
+  routing via published client`). The dependency is now
+  `github:rektide/watchman-client-json#main`; `bun install` resolves the published
+  **`e88f258`** head, with its archive identity/integrity in `bun.lock`. The lock
+  diff changes only that dependency declaration and its resolved package record;
+  local-client dev-dependency metadata disappears, its exact Effect peer remains.
+  Installed `Connection.ts` matches the published source checksum.
+- Effect-watchman's final publication target is an **append-only merge** of this
+  addendum's branch and existing main **`17af68f3f0eef5136901f25c07349fccefb99df7`**,
+  pushed to
+  [effect-watchman/main](https://github.com/rektide/effect-watchman/tree/main).
+  That independent `fix(watchman): keep Stats literal compilable across type
+  bands` commit arrived while this continuation was running and touches only
+  `src/GlobView.ts`, outside the wire changes. Its content and identity are
+  preserved; neither history is rebased or rewritten.
+  Its exact pushed head is recorded by the native session's `git ls-remote`
+  verification and final delivery report, avoiding a self-referential commit hash
+  inside this document. The push is a fast-forward of the existing local stack;
+  no squash/edit, force-push, tag or version bump (**1.0.0** stays).
+
+Post-rewire verification: client **41 pass, 0 fail** (731 assertions), its new log
+keeper repeated ten times **10 pass, 0 fail** (110 assertions); effect-watchman
+build/typecheck clean, full non-daemon run **98 pass, 16 skip, 0 fail** (1,647
+assertions), daemon suite **19 pass, 0 fail** (186 assertions), and the integration
+log-parity keeper on both wires repeated ten times **20 pass, 0 fail**. The 16
+non-daemon skips are 15 daemon opt-in cases plus the one permanent BSER UTF-8
+marker. The full daemon-enabled run is **113 pass, 1 skip, 0 fail**, 1,818
+assertions; its sole skip is that permanent marker. Receipt and README passed
+rkt checks again.
+
+**Host adoption remains outstanding:** OpenCode's lock still pins the older
+effect-watchman commit until a separate deliberate refresh. No host repository,
+bser-esm or effect-watch-plus file was changed by this continuation.
+
+## Original local checkpoint — outcome and scope
 
 JSON remains the default, now by consuming `watchman-client-json` rather than
 maintaining another local copy of its connection/framer. `wireFormat: "bser"`
@@ -78,7 +138,7 @@ in watchman-client-json, bser-esm, effect-watch-plus or OpenCode were changed.
 The local JSON dependency deliberately prevents claiming an externally installable
 release. Interface choices below are implemented proposals, not human acceptance.
 
-## Interface-break and adoption ledger — human sign-off required
+## Original interface-break and adoption ledger — approved 2026-10-28
 
 1. **New construction option:** `wireFormat?: "json" | "bser"` on Watchman/Glob socket-configured layers; omitted means JSON. Fixed across recovery; invalid values fail construction. No negotiation/fallback.
 2. **Wire-byte budgets:** `maxFrameBytes`/`maxQueryBytes` count each selected encoding's payload, excluding JSON LF or BSER's 4–11-byte v1 header. The same numeric budget admits different decoded content. Equality remains legal.
