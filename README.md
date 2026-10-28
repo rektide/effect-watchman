@@ -5,8 +5,10 @@ description: Independent Effect watching and additive approved-root glob enumera
 resource: /README.md
 status: active
 author: GPT-6.1 Sol xhigh
-date: 2026-10-19
+date: 2026-10-28
 sources:
+  - resource: "opencode://ses_e7c90f1d6ffeviS28mp5Msdsk1"
+    title: Add construction-time JSON/BSER choice with JSON default; document byte limits, lossy BSER strictness, measured tradeoffs, dependency publication blocker and verified parity limits
   - resource: "opencode://ses_e7c9d0041ffeVARzmCo25gRZvM"
     title: Ship raw TypeScript sources; repoint package entrypoints at .ts files
   - resource: "opencode://ses_e809723ffffe8kD6j9UHE5XIV7"
@@ -101,7 +103,7 @@ project acquisition is cached; daemon roots are shared, but overlapping subscrip
 are not merged. Closing a consumer unsubscribes it; closing the layer destroys its
 socket. Daemon-owned root watches are not deleted. Ignores are userland filters.
 
-Defaults: connect/request 3000ms, cleanup 500ms, JSON frame 1MiB, 128 active/queued
+Defaults: connect/request 3000ms, cleanup 500ms, frame payload 1MiB, 128 active/queued
 commands, 1024 buffered events per consumer. `Options` exposes corresponding
 `connectTimeoutMs`, `requestTimeoutMs`, `cleanupTimeoutMs`, `maxFrameBytes`,
 `maxPendingCommands`, `maxBufferedEvents`; all must be positive finite integers.
@@ -117,6 +119,62 @@ requester's lifetime. Ordinary watches are not transparently retried; recovery
 signals are a separate opt-in route. There is no discovery, autospawn, catch-up API,
 arbitrary symlink traversal or topology-replacement guarantee.
 Daemon `ignore_dirs` / `ignore_vcs` still constrain coverage.
+
+## Wire backend choice
+
+**JSON stays the default.** `wireFormat?: "json" | "bser"` is a typed construction
+option on `Watchman.layer`, `Watchman.backendLayer`, `Glob.layer`, and
+`Watchman.layerWithGlob`. All watch, query, recovery and inventory consumer
+interfaces stay the same. Selection is fixed for that owner, including reconnects;
+there is no negotiation or automatic fallback.
+
+```ts
+const json = Watchman.layer({ socketPath: "/path/to/watchman.sock" })
+const bser = Watchman.layer({ socketPath: "/path/to/watchman.sock", wireFormat: "bser" })
+```
+
+| Choice | Wire implementation | Text contract |
+| --- | --- | --- |
+| `"json"` (default) | Extracted `watchman-client-json`; reviewed S1 segmented JSON-lines framing | Fatal UTF-8 rejection; malformed text is connection-terminal |
+| `"bser"` (opt-in) | BSER v1 length-prefixed PDUs with `@superbfowle/bser-esm` 3.0.0 | **Lossy UTF-8**: invalid bytes silently become U+FFFD; not strict-text parity |
+
+The BSER degradation is implemented **pending human sign-off**, not accepted
+policy. Schema validation after decoding cannot detect replaced bytes or recover
+the original filenames. A fatal-string/bounds patch would require maintaining
+and distributing a real codec fork; this integration does not patch the codec.
+Do not choose BSER where exact non-UTF-8 rejection is required. Its exact int64
+decoder returns bigint outside the safe number range; such values in numeric
+filesystem metadata fail validation rather than silently rounding. Query-schema
+failure is operation-local; malformed subscription payloads remain terminal.
+
+Both `maxFrameBytes` and `maxQueryBytes` count **encoded payload bytes**: JSON
+excludes LF; BSER excludes its 4–11-byte v1 header. Equality is legal, and each
+PDU has its own limit. BSER rejects oversized declared lengths before allocating
+the payload. One bounded PDU buffer plus the codec's separate accumulator/decoded
+objects is not a decoded-heap or nesting/expansion bound. V2 is unsupported.
+Command FIFO ownership after cancellation, listener-before-subscribe and complete
+delivery ordering are retained. Detaching local routing is not unsubscribe.
+
+**Known classifier gap:** BSER ignores unilateral `log` frames without consuming
+a command slot. The extracted JSON client's existing classifier does not yet do
+that and may terminate on a log frame. The filesystem APIs never enable daemon
+logs. This is a tracked parity gap, not a claim that both classifiers are identical.
+
+The measured tradeoff favors choice, not a speed claim: at 100k files,
+`bser-esm` decode was **~1.8× slower** than fatal UTF-8 + `JSON.parse` (31.1 vs
+17.2 ms median), but its 4,200,349-byte frame was **~52% of JSON's 8,100,385
+bytes (~48% fewer)**. These are decoder/captured-frame results, not a benchmark
+of the new integration or a host latency guarantee. See
+[bench0](file:///home/rektide/src/opencode-watch-rebuild/design/filesystem-watch/bser-bench0.sol61x.md)
+and [bench1](file:///home/rektide/src/opencode-watch-rebuild/design/filesystem-watch/bser-bench1.sol61x.md).
+
+**Local dependency / release blocker:** `watchman-client-json@0.1.0` is currently
+`file:../watchman-client-json`, unpublished and unpushed. It must be published to
+its GitHub family repository and this dependency changed before effect-watchman's
+`main` is externally installable. That publication/push is a human decision.
+`@superbfowle/bser-esm` uses `github:rektide/bser-esm`; the Bun lock records the
+reviewed commit. No package publication, main-bookmark move or push accompanies
+this work. See the [implementation/sign-off receipt](doc/dual-backend0.sol61x.md).
 
 ```sh
 bun install --frozen-lockfile
@@ -142,3 +200,6 @@ frame order and per-epoch sequence. Finite `enumerate`/`glob` remains sorted and
 deduplicated. See the [Gate A API and receipt](doc/inventory/observed-source0.sol61x.md).
 The [S1 materialization checkpoint](doc/inventory/source-materialization-s1.sol61x.md)
 records linear JSON framing, phase attribution and the remaining synchronous-work limit.
+The extracted JSON client now owns that framing; integration-side lexical/sort
+diagnostics remain local. The [dual-backend receipt](doc/dual-backend0.sol61x.md)
+records shared semantic tests, BSER daemon coverage and the unresolved policy gaps.

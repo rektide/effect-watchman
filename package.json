@@ -11,7 +11,7 @@
 		},
 		"./package.json": "./package.json"
 	},
-	"files": ["src", "effect-watchman.ts", "README.md", "IGNORE.md", "ENUMERATION.md", "RECOVERY.md", "doc/inventory"],
+	"files": ["src", "effect-watchman.ts", "README.md", "IGNORE.md", "ENUMERATION.md", "RECOVERY.md", "doc/inventory", "doc/dual-backend0.sol61x.md"],
 	"sideEffects": false,
 	"scripts": {
 		"build": "tsgo --noEmit -p tsconfig.json",

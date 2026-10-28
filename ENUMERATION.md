@@ -5,8 +5,10 @@ description: Approved-root daemon selection, npm-compatible traversal, explicit 
 resource: /ENUMERATION.md
 status: implemented
 author: GPT-6.1 Sol xhigh
-date: 2026-10-19
+date: 2026-10-28
 sources:
+  - resource: "opencode://ses_e7c90f1d6ffeviS28mp5Msdsk1"
+    title: Clarify selectable JSON/BSER wire-payload budget semantics and preserve operation-local query failures; connect current owner recovery documentation
   - resource: "opencode://ses_e86321c9effeBsU4Tba8JL11k2"
     title: Bound fixed-depth local supplementation before child reads for OpenCode skill directory discovery; verify with a permission boundary and the library suite
   - resource: "opencode://ses_ead2c9a29fferY0Og3JRINkhz4"
@@ -148,15 +150,21 @@ maxQueryBytes, queueTimeoutMs and the three query timeout fields. Daemon query
 responses are whole arrays, not wire-streamed or paginated. Local supplementary
 result arrays have normal native-glob memory cost; maxQueryBytes bounds daemon
 reply bytes, not those arrays.
+`wireFormat` selects JSON by default or opt-in BSER without changing the returned
+enumeration interface. Both ceilings count encoded payload bytes, excluding JSON's
+LF delimiter or BSER's v1 header. Budgets are therefore representation-dependent,
+not a portable decoded-size bound. See the [wire choices and strictness warning](README.md#wire-backend-choice).
 
 A complete oversized query reply exceeding maxQueryBytes fails that operation
 without destroying siblings; exceeding the shared framing ceiling, wire silence,
-disconnect or corrupt JSON is terminal. Schema/query errors and daemon crawl warnings
+disconnect or corrupt wire encoding is terminal (fatal UTF-8 remains JSON-only;
+BSER currently decodes strings lossily). Schema/query errors and daemon crawl warnings
 (including permission-denied subtrees) fail rather than being
 decoded through the subscription schema. Canceled transmitted queries retain wire
 ownership and their deadline, so their late reply cannot be mistaken for a sibling
 command's response. Queries serialize with watch commands; no transport pool or
-automatic reconnect is hidden underneath the API.
+query retry is hidden underneath the API. Later operations may use the shared
+[recovered owner](RECOVERY.md#shared-lifecycle-and-health).
 
 ## Limits
 

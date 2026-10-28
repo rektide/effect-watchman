@@ -8,6 +8,8 @@ author: GPT-6.1 Sol
 model: openai/gpt-6.1-sol#xhigh
 date: 2026-10-27
 sources:
+  - resource: "opencode://ses_e7c90f1d6ffeviS28mp5Msdsk1"
+    title: Bind historical S1 connection/framing evidence to its preserved revision after the dual-backend extraction cutover; add current owner pointer without changing measurements
   - resource: "opencode://ses_e809723ffffe8kD6j9UHE5XIV7"
     title: S1 source builder implements and tests linear framing and ordering clarification, measures committed control and S1 in 18 fresh processes, and returns the remaining synchronous-work checkpoint
   - resource: "file:///home/rektide/src/opencode-watch-rebuild/design/filesystem-watch/source-materialization-handoff0.gpt6a.md"
@@ -18,9 +20,9 @@ sources:
     title: Prior direct source/controller 200–203 ms gap and churn sequence, not a library-only control
   - resource: "file:///home/rektide/src/opencode-watch-rebuild/design/filesystem-watch/bser-bench0.sol61x.md"
     title: Separate wire benchmark, framing amplification and daemon first-byte evidence
-  - resource: /src/Connection.ts
+  - resource: "https://github.com/rektide/effect-watchman/blob/bd893c6d54db799a57861c917b4644106247cdd0/src/Connection.ts"
     title: Unchanged synchronous correlation and validation flow using cached decoders and linear framing
-  - resource: /src/Framing.ts
+  - resource: "https://github.com/rektide/effect-watchman/blob/bd893c6d54db799a57861c917b4644106247cdd0/src/Framing.ts"
     title: Segmented incomplete frame, bounded small-fragment pages and logical copy/scan counters
   - resource: /src/Diagnostics.ts
     title: Private opt-in fixed-cardinality aggregates and bounded numeric samples
@@ -46,7 +48,7 @@ sources:
     title: Historical transport and cancellation regression obligations
   - resource: /doc/inventory/observed-source0.sol61x.md
     title: Predecessor Gate A semantics and verification
-  - resource: /test/framing.test.ts
+  - resource: "https://github.com/rektide/effect-watchman/blob/bd893c6d54db799a57861c917b4644106247cdd0/test/framing.test.ts"
     title: Deterministic linearity, storage, split-byte, limit and terminal-release tests
   - resource: /test/transport.test.ts
     title: Fatal UTF-8/JSON, wire ownership, cancellation and multi-frame regression tests
@@ -64,6 +66,13 @@ verification:
 ---
 
 # Source materialization S1
+
+**2026-10-28 ownership addendum:** the JSON connection/framer now lives in
+`watchman-client-json`; the three historical wire/framing sources above are bound
+to the preserved S1 revision rather than their removed/replaced local paths.
+The [dual-backend receipt](/doc/dual-backend0.sol61x.md) records that extraction
+cutover and the BSER choice. No S1 measurement or performance claim below is rerun
+or reinterpreted by this ownership update.
 
 **S1 is implemented; the 50 ms working long-task target is not met.** Initial
 100k framing copy/scan falls from **94.35–103.01 MB to 8.10 MB**, and the redundant
