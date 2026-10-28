@@ -6,7 +6,7 @@ import { join } from "node:path"
 import { NodeFileSystem, NodePath } from "@effect/platform-node"
 import { Effect, Layer, Stream } from "effect"
 import { Inventory, Watchman } from "../effect-watchman.js"
-import { encode, readCommands, readFrames } from "./wire.ts"
+import { encode, readCommands, readFrames } from "./wire.js"
 
 const binary = process.env.WATCHMAN_TEST_BINARY
 const until = async (predicate: () => boolean | Promise<boolean>) => {

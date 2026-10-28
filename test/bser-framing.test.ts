@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test"
 import { endianness } from "node:os"
 import { dumpToBuffer, loadFromBuffer } from "@superbfowle/bser-esm"
-import { BserFraming } from "../src/BserFraming.ts"
+import { BserFraming } from "../src/BserFraming.js"
 
 const payload = dumpToBuffer({ clock: "c:1", files: [{ name: "café/😀\nname", type: "f" }] }).subarray(7)
 const header = (size: bigint, width: number) => {

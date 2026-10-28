@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { capture, measure } from "../src/Diagnostics.ts"
+import { capture, measure } from "../src/Diagnostics.js"
 
 test("integration diagnostics remain bounded and do not retain frame contents", () => {
   const diagnostic = capture()

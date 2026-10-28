@@ -3,7 +3,7 @@ import { createConnection, type Socket } from "node:net"
 import { dumpToBuffer, loadFromBuffer } from "@superbfowle/bser-esm"
 import { Schema } from "effect"
 import { ConfigReply, Envelope, QueryReply, Reply, SubscriptionCanceled, type ConnectionOptions, type SubscriptionListener } from "watchman-client-json"
-import { BserFraming } from "./BserFraming.ts"
+import { BserFraming } from "./BserFraming.js"
 
 const decodeReply = Schema.decodeUnknownSync(Reply)
 const decodeEnvelope = Schema.decodeUnknownSync(Envelope)

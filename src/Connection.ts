@@ -1,5 +1,5 @@
 import { Connection } from "watchman-client-json"
-import { BserConnection } from "./BserConnection.ts"
+import { BserConnection } from "./BserConnection.js"
 
 export { Delivery, SubscriptionCanceled, QueryReply, ConfigReply, type Reply } from "watchman-client-json"
 

@@ -6,7 +6,7 @@ import { NodeFileSystem, NodePath } from "@effect/platform-node"
 import { Effect, Fiber, Layer, Stream } from "effect"
 import { Glob, Watchman } from "../effect-watchman.js"
 import { makeConnection } from "../src/Connection.js"
-import { encode, readCommands } from "./wire.ts"
+import { encode, readCommands } from "./wire.js"
 
 describe.each(["json", "bser"] as const)("%s query transport", (wireFormat) => {
 const until = async (predicate: () => boolean) => {

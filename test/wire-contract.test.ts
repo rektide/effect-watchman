@@ -5,8 +5,8 @@ import { endianness } from "node:os"
 import { join } from "node:path"
 import { dumpToBuffer } from "@superbfowle/bser-esm"
 import { Connection, SubscriptionCanceled } from "watchman-client-json"
-import { makeConnection, type ConnectionOptions, type WireConnection } from "../src/Connection.ts"
-import { encode, readCommands, type WireFormat } from "./wire.ts"
+import { makeConnection, type ConnectionOptions, type WireConnection } from "../src/Connection.js"
+import { encode, readCommands, type WireFormat } from "./wire.js"
 
 const until = async (predicate: () => boolean) => {
   const deadline = Date.now() + 3000

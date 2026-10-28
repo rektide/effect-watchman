@@ -6,7 +6,7 @@ import { NodeFileSystem, NodePath } from "@effect/platform-node"
 import { Effect, Fiber, Layer, Stream } from "effect"
 import { Watchman } from "../effect-watchman.js"
 import { makeConnection, Delivery } from "../src/Connection.js"
-import { encode, readCommands } from "./wire.ts"
+import { encode, readCommands } from "./wire.js"
 
 describe.each(["json", "bser"] as const)("%s transport", (wireFormat) => {
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
