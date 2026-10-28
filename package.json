@@ -2,19 +2,19 @@
 	"name": "effect-watchman",
 	"version": "1.0.0",
 	"description": "Independent Effect filesystem watching and approved-root glob enumeration through Watchman",
-	"main": "./dist/effect-watchman.js",
-	"types": "./dist/effect-watchman.d.ts",
+	"main": "./effect-watchman.ts",
+	"types": "./effect-watchman.ts",
 	"exports": {
 		".": {
-			"types": "./dist/effect-watchman.d.ts",
-			"default": "./dist/effect-watchman.js"
+			"types": "./effect-watchman.ts",
+			"default": "./effect-watchman.ts"
 		},
 		"./package.json": "./package.json"
 	},
-	"files": ["dist", "README.md", "IGNORE.md", "ENUMERATION.md", "RECOVERY.md", "doc/inventory"],
+	"files": ["src", "effect-watchman.ts", "README.md", "IGNORE.md", "ENUMERATION.md", "RECOVERY.md", "doc/inventory"],
 	"sideEffects": false,
 	"scripts": {
-		"build": "tsgo -p tsconfig.build.json",
+		"build": "tsgo --noEmit -p tsconfig.json",
 		"typecheck": "tsgo --noEmit -p tsconfig.json",
 		"test": "bun test ./test",
 		"test:daemon": "bun test ./test/daemon.test.ts ./test/enumeration.test.ts ./test/observed.test.ts ./test/inventory-daemon.test.ts"

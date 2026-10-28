@@ -7,6 +7,8 @@ status: active
 author: GPT-6.1 Sol xhigh
 date: 2026-10-19
 sources:
+  - resource: "opencode://ses_e7c9d0041ffeVARzmCo25gRZvM"
+    title: Ship raw TypeScript sources; repoint package entrypoints at .ts files
   - resource: "opencode://ses_e809723ffffe8kD6j9UHE5XIV7"
     title: Clarify observed baseline membership versus finite enumeration ordering for source-materialization S1
   - resource: "opencode://ses_e87038c1affeHRNE9v4Ggec0Sl"
@@ -27,6 +29,12 @@ or `Watchman.layerWithGlob(...)` for shared watch/query ownership. This includes
 selective daemon queries, npm glob traversal, explicit native symlink/ignored-root
 supplements and complete baselines. The existing `Watchman.layer` stays watch-only.
 See [enumeration API and limits](ENUMERATION.md).
+
+The package ships raw TypeScript sources: `main`/`types`/`exports` point at
+`.ts` files and there is no build output. Consumers type-strip (Bun) or use
+their own consumption tooling; no `dist` step is needed when linking the
+repository. `effect-watchman` resolves its `effect-watch-plus/inventory`
+peer subpath the same way.
 
 ```ts
 import { NodeFileSystem, NodePath } from "@effect/platform-node"
