@@ -92,7 +92,10 @@ test.skipIf(!binary)("private daemon: real public clock join, pre-ack race, fres
         if (event.type === "baseline") { present.clear(); event.entries.forEach((entry) => present.add(entry.path)) }
         if (event.type === "changes") event.changes.forEach((change) => change.type === "present" ? present.add(change.entry.path) : present.delete(change.path))
       })), Effect.forkScoped)
-      yield* Effect.promise(() => until(() => events.some((event) => event.type === "changes")))
+      // The daemon may split delete/recreate across separate catch-up frames.
+      // Readiness for this assertion is the final membership, not the first frame.
+      yield* Effect.promise(() => until(() => events.some((event) => event.type === "changes") &&
+        present.has("a.ts") && present.has("raced.ts") && !present.has("victim.ts")))
       expect(events[0]).toMatchObject({ type: "baseline", epoch: 1 })
       expect(events[1]).toMatchObject({ type: "changes", epoch: 1, sequence: 1 })
       expect([...present].sort()).toEqual([".watchmanconfig", "a.ts", "raced.ts"])
