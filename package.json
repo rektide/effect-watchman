@@ -45,7 +45,9 @@
 	},
 	"homepage": "https://github.com/rektide/effect-watchman#readme",
 	"dependencies": {
+		"@superbfowle/bser-esm": "github:rektide/bser-esm",
 		"glob": "13.0.6",
-		"minimatch": "10.0.3"
+		"minimatch": "10.0.3",
+		"watchman-client-json": "file:../watchman-client-json"
 	}
 }

@@ -1,7 +1,7 @@
 import { realpath, stat } from "node:fs/promises"
 import { isAbsolute, relative, resolve, sep } from "node:path"
 import { Clock, Effect, PlatformError, Queue, Random } from "effect"
-import { Connection, type ConnectionOptions, type Reply } from "./Connection.js"
+import { makeConnection, type WireConnection, type ConnectionOptions, type Reply } from "./Connection.js"
 
 export interface RecoveryOptions {
   readonly retryMinMs?: number
@@ -23,7 +23,7 @@ export interface Health {
 }
 export interface Session {
   readonly generation: number
-  readonly connection: Connection
+  readonly connection: WireConnection
   readonly roots: Map<string, Promise<Reply>>
   readonly abort: AbortController
 }
@@ -42,9 +42,9 @@ export const contains = (root: string, target: string) => {
 
 /** One scoped recovery/probe controller shared by watch and query projections. */
 export const makeOwner = (options: Options) => Effect.gen(function*() {
-  if (!options.socketPath || Object.entries(options).some(([key, value]) => !["socketPath", "defaultIgnores", "approvedRoots"].includes(key) && value !== undefined &&
+  if (!options.socketPath || (options.wireFormat !== undefined && options.wireFormat !== "json" && options.wireFormat !== "bser") || Object.entries(options).some(([key, value]) => !["socketPath", "wireFormat", "defaultIgnores", "approvedRoots"].includes(key) && value !== undefined &&
     (typeof value !== "number" || !Number.isSafeInteger(value) || value <= 0)) || (options.retryMinMs ?? 250) > (options.retryMaxMs ?? 60_000)) {
-    return yield* Effect.fail(badArgument("socketPath and positive finite integer limits (retryMinMs <= retryMaxMs) are required"))
+    return yield* Effect.fail(badArgument("socketPath, wireFormat json/bser and positive finite integer limits (retryMinMs <= retryMaxMs) are required"))
   }
   const approval = options.approvedRoots
   const approved = approval === undefined ? undefined : yield* Effect.tryPromise({
@@ -59,7 +59,7 @@ export const makeOwner = (options: Options) => Effect.gen(function*() {
   const clock = yield* Clock.Clock
   const interests = new Map<Interest, { abort: AbortController; generation: number; revision: number }>()
   let active: Session | undefined
-  let candidate: Connection | undefined
+  let candidate: WireConnection | undefined
   let generation = 0
   let attempts = 0
   let reason: string | undefined
@@ -84,7 +84,7 @@ export const makeOwner = (options: Options) => Effect.gen(function*() {
     active = undefined
   }))
   const connect = Effect.gen(function*() {
-    const connection = new Connection(options, (error) => {
+    const connection = makeConnection(options, (error) => {
       if (closed || active?.connection !== connection) return
       if (state === "healthy" && clock.currentTimeMillisUnsafe() - healthySince >= (options.stableHealthMs ?? 30_000)) attempts = 0
       active.abort.abort()

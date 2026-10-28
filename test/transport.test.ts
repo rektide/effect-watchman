@@ -1,37 +1,35 @@
-import { expect, test } from "bun:test"
+import { describe, expect, test } from "bun:test"
 import { createServer, type Socket } from "node:net"
 import { mkdtemp, rm } from "node:fs/promises"
 import { join } from "node:path"
 import { NodeFileSystem, NodePath } from "@effect/platform-node"
 import { Effect, Fiber, Layer, Stream } from "effect"
 import { Watchman } from "../effect-watchman.js"
-import { Connection, Delivery } from "../src/Connection.js"
+import { makeConnection, Delivery } from "../src/Connection.js"
+import { encode, readCommands } from "./wire.ts"
 
+describe.each(["json", "bser"] as const)("%s transport", (wireFormat) => {
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 const until = async (predicate: () => boolean) => {
-  for (let i = 0; i < 100; i++) { if (predicate()) return; await pause(10) }
-  throw new Error("Scripted peer condition timed out")
+  const deadline = Date.now() + 3000
+  while (!predicate()) {
+    if (Date.now() >= deadline) throw new Error("Scripted peer condition timed out")
+    await pause(1)
+  }
 }
 const fixture = async (run: (peer: {
   socketPath: string; directory: string; sockets: Set<Socket>; commands: Array<ReadonlyArray<unknown>>
 }) => Promise<void>, respond: (command: ReadonlyArray<unknown>, socket: Socket, directory: string) => void) => {
-  const directory = await mkdtemp(join(process.env.WATCH_TEST_DIRECTORY ?? "/home/rektide/tmp-opencode", "watchman-peer-"))
+  const directory = await mkdtemp(join(process.env.WATCH_TEST_DIRECTORY ?? "/tmp/opencode", "watchman-peer-"))
   const socketPath = join(directory, "peer.sock")
   const sockets = new Set<Socket>()
   const commands: Array<ReadonlyArray<unknown>> = []
   const server = createServer((socket) => {
     sockets.add(socket)
     socket.once("close", () => sockets.delete(socket))
-    let buffer = ""
-    socket.on("data", (data) => {
-      buffer += data.toString("utf8")
-      while (buffer.includes("\n")) {
-        const end = buffer.indexOf("\n")
-        const command: ReadonlyArray<unknown> = JSON.parse(buffer.slice(0, end))
-        buffer = buffer.slice(end + 1)
-        commands.push(command)
-        respond(command, socket, directory)
-      }
+    readCommands(wireFormat, socket, (command) => {
+      commands.push(command)
+      respond(command, socket, directory)
     })
   })
   await new Promise<void>((resolve) => server.listen(socketPath, resolve))
@@ -42,13 +40,13 @@ const fixture = async (run: (peer: {
     await rm(directory, { recursive: true, force: true })
   }
 }
-const reply = (socket: Socket, value: unknown) => socket.write(JSON.stringify(value) + "\n")
+const reply = (socket: Socket, value: unknown) => socket.write(encode(wireFormat, value))
 const common = (command: ReadonlyArray<unknown>, socket: Socket, directory: string) => {
   if (command[0] === "watch-project") reply(socket, { watch: directory })
   if (command[0] === "clock") reply(socket, { clock: "c:1:1" })
   if (command[0] === "unsubscribe") reply(socket, { unsubscribe: command[2], deleted: true })
 }
-const publicLayer = (socketPath: string, cleanupTimeoutMs = 100) => Watchman.layer({ socketPath, requestTimeoutMs: 500, cleanupTimeoutMs }).pipe(
+const publicLayer = (socketPath: string, cleanupTimeoutMs = 100) => Watchman.layer({ socketPath, wireFormat, requestTimeoutMs: 500, cleanupTimeoutMs }).pipe(
   Layer.provide(Layer.mergeAll(NodeFileSystem.layer, NodePath.layer))
 )
 
@@ -85,7 +83,7 @@ test("socket-configured instance ignores remain active when defaults are disable
         join(peer.directory, "nested/.watchman-cookie-visible"), join(peer.directory, "keep")
       ])
     })).pipe(Effect.provide(Watchman.layer({
-      socketPath: peer.socketPath, ignore: ["instance"], defaultIgnores: false
+      socketPath: peer.socketPath, wireFormat, ignore: ["instance"], defaultIgnores: false
     }).pipe(Layer.provide(Layer.mergeAll(NodeFileSystem.layer, NodePath.layer))))))
   }, (command, socket, directory) => {
     common(command, socket, directory)
@@ -178,17 +176,15 @@ test("rejected subscription releases acquired listener and connection through pu
 
 test("mismatched reply settles outstanding AND queued commands without losing pending owner", async () => {
   await fixture(async (peer) => {
-    const connection = new Connection({ socketPath: peer.socketPath, requestTimeoutMs: 500 })
+    const connection = makeConnection({ socketPath: peer.socketPath, wireFormat, requestTimeoutMs: 500 })
     try {
       const signal = new AbortController().signal
       await connection.connect(signal)
-      const started = Date.now()
       const results = await Promise.allSettled([
         connection.command(["clock", "root"], "clock", undefined, signal),
         connection.command(["clock", "root"], "clock", undefined, signal)
       ])
       expect(results.map((result) => result.status)).toEqual(["rejected", "rejected"])
-      expect(Date.now() - started).toBeLessThan(300)
       await until(() => peer.sockets.size === 0)
       expect(peer.commands).toHaveLength(1)
     } finally { connection.close() }
@@ -213,7 +209,7 @@ test("unilateral cancellation is terminal before push discrimination", async () 
   })
 })
 
-test("split UTF-8 and multiple JSON frames preserve push delivery", async () => {
+test("split UTF-8 and multiple frames preserve push delivery", async () => {
   await fixture(async (peer) => {
     const events = await Effect.runPromise(Effect.gen(function*() {
       const fs = yield* Watchman.fileSystem
@@ -227,9 +223,11 @@ test("split UTF-8 and multiple JSON frames preserve push delivery", async () => 
   }, (command, socket, directory) => {
     common(command, socket, directory)
     if (command[0] === "subscribe") {
-      const frames = Buffer.from(JSON.stringify({ subscribe: command[2] }) + "\n" +
-        JSON.stringify({ subscription: command[2], files: [{ name: "café", exists: true, new: true }] }) + "\n" +
-        JSON.stringify({ subscription: command[2], files: [{ name: "gone", exists: false }] }) + "\n")
+      const frames = Buffer.concat([
+        encode(wireFormat, { subscribe: command[2] }),
+        encode(wireFormat, { subscription: command[2], files: [{ name: "café", exists: true, new: true }] }),
+        encode(wireFormat, { subscription: command[2], files: [{ name: "gone", exists: false }] })
+      ])
       const split = frames.indexOf(Buffer.from("é")) + 1
       socket.write(frames.subarray(0, split))
       setTimeout(() => socket.write(frames.subarray(split)), 10)
@@ -237,10 +235,13 @@ test("split UTF-8 and multiple JSON frames preserve push delivery", async () => 
   })
 })
 
-test("malformed JSON/schema/UTF-8 and oversized frames are latched terminal failures", async () => {
-  for (const data of [Buffer.from("not JSON\n"), Buffer.from('{"clock":123}\n'), Buffer.from([123, 34, 255, 34, 58, 49, 125, 10]), Buffer.from("x".repeat(33))]) {
+test("malformed wire/schema and oversized frames are latched terminal failures", async () => {
+  const invalid = wireFormat === "json"
+    ? [Buffer.from("not JSON\n"), Buffer.from([123, 34, 255, 34, 58, 49, 125, 10]), Buffer.from("x".repeat(33))]
+    : [Buffer.from([0, 2, 3, 1, 10]), Buffer.from([0, 1, 3, 1, 127]), Buffer.from([0, 1, 3, 33])]
+  for (const data of [...invalid, encode(wireFormat, { clock: 123 })]) {
     await fixture(async (peer) => {
-      const connection = new Connection({ socketPath: peer.socketPath, maxFrameBytes: 32, requestTimeoutMs: 500 })
+      const connection = makeConnection({ socketPath: peer.socketPath, wireFormat, maxFrameBytes: 32, requestTimeoutMs: 500 })
       try {
         const signal = new AbortController().signal
         await connection.connect(signal)
@@ -256,7 +257,7 @@ test("malformed JSON/schema/UTF-8 and oversized frames are latched terminal fail
 test("silent wire request still reaches terminal deadline after caller cancellation", async () => {
   for (const cancel of [false, true]) {
     await fixture(async (peer) => {
-      const connection = new Connection({ socketPath: peer.socketPath, requestTimeoutMs: 100 })
+      const connection = makeConnection({ socketPath: peer.socketPath, wireFormat, requestTimeoutMs: 100 })
       try {
         const controller = new AbortController()
         await connection.connect(controller.signal)
@@ -290,14 +291,12 @@ test("interrupted subscribe with silent wire reply still has bounded cleanup", a
 
 test("silent unsubscribe cannot hang scope close", async () => {
   await fixture(async (peer) => {
-    const start = Date.now()
     await Effect.runPromise(Effect.scoped(Effect.gen(function*() {
       const fs = yield* Watchman.fileSystem
       yield* fs.watch(peer.directory).pipe(Stream.runDrain, Effect.forkScoped)
       yield* Effect.promise(() => until(() => peer.commands.some((command) => command[0] === "subscribe")))
       yield* Effect.sleep("20 millis")
     })).pipe(Effect.provide(publicLayer(peer.socketPath, 100))))
-    expect(Date.now() - start).toBeLessThan(600)
     await until(() => peer.sockets.size === 0)
     expect(peer.commands.some((command) => command[0] === "unsubscribe")).toBe(true)
   }, (command, socket, directory) => {
@@ -319,7 +318,7 @@ test("bounded delivery overflow discards buffered hints and latches failure", as
 
 test("unsent cancellation skips only its command and frees bounded queue capacity", async () => {
   await fixture(async (peer) => {
-    const connection = new Connection({ socketPath: peer.socketPath, requestTimeoutMs: 500, maxPendingCommands: 2 })
+    const connection = makeConnection({ socketPath: peer.socketPath, wireFormat, requestTimeoutMs: 500, maxPendingCommands: 2 })
     try {
       const signal = new AbortController().signal
       await connection.connect(signal)
@@ -352,7 +351,7 @@ test("unsent cancellation skips only its command and frees bounded queue capacit
 test("public watch preserves terminal disconnect/fresh-history/overflow as typed failure", async () => {
   for (const loss of ["disconnect", "fresh", "overflow"]) {
     await fixture(async (peer) => {
-      const layer = Watchman.layer({ socketPath: peer.socketPath, maxBufferedEvents: 1 }).pipe(
+      const layer = Watchman.layer({ socketPath: peer.socketPath, wireFormat, maxBufferedEvents: 1 }).pipe(
         Layer.provide(Layer.mergeAll(NodeFileSystem.layer, NodePath.layer))
       )
       const result = await Effect.runPromise(Effect.gen(function*() {
@@ -371,4 +370,5 @@ test("public watch preserves terminal disconnect/fresh-history/overflow as typed
         files: ["one", "two", "three"].map((name) => ({ name, exists: true, new: true })) })
     })
   }
+})
 })

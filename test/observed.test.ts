@@ -1,9 +1,9 @@
-import { expect, test } from "bun:test"
+import { describe, expect, test } from "bun:test"
 import { spawn } from "node:child_process"
 import { mkdir, mkdtemp, readdir, rm, unlink, writeFile } from "node:fs/promises"
 import { createConnection } from "node:net"
 import { join } from "node:path"
-import { Connection, type Reply } from "../src/Connection.js"
+import { makeConnection, type WireConnection, type Reply } from "../src/Connection.js"
 
 // De-risk probe for the proposed observed-inventory capability: a baseline query
 // paired to a subscription by the query's own clock, with epoch-bound
@@ -60,15 +60,16 @@ const startDaemon = async (scratch: string): Promise<Daemon> => {
   }
 }
 
+describe.each(["json", "bser"] as const)("%s direct observed daemon", (wireFormat) => {
 let subscriptionSerial = 0
 
 const connect = async (socketPath: string) => {
-  const connection = new Connection({ socketPath, requestTimeoutMs: 10_000, maxFrameBytes: 8 * 1024 * 1024 })
+  const connection = makeConnection({ socketPath, ...(wireFormat === "bser" ? { wireFormat } : {}), requestTimeoutMs: 10_000, maxFrameBytes: 8 * 1024 * 1024 })
   await connection.connect(new AbortController().signal)
   return connection
 }
 
-const watchRoot = (connection: Connection, root: string) =>
+const watchRoot = (connection: WireConnection, root: string) =>
   connection.command(["watch", root], "watch", root, new AbortController().signal, 10_000)
 
 interface Baseline {
@@ -78,7 +79,7 @@ interface Baseline {
 }
 
 /** The proposed step 2: one lexical baseline query retaining its own clock. */
-const baseline = async (connection: Connection, root: string): Promise<Baseline> => {
+const baseline = async (connection: WireConnection, root: string): Promise<Baseline> => {
   const reply = await connection.query(["query", root, {
     expression: ["allof", ["exists"]], fields: ["name", "type"], sync_timeout: 10_000
   }], new AbortController().signal, 20_000, 32 * 1024 * 1024)
@@ -110,7 +111,7 @@ interface Pairing {
 }
 
 /** Proposed steps 3-5: listener before subscribe, staging until acknowledgement, fresh history rejects the pairing. */
-const pair = async (connection: Connection, root: string, since: string, options: { expression?: ReadonlyArray<unknown> } = {}): Promise<Pairing> => {
+const pair = async (connection: WireConnection, root: string, since: string, options: { expression?: ReadonlyArray<unknown> } = {}): Promise<Pairing> => {
   const name = `observed-probe-${++subscriptionSerial}`
   const frames: Array<ProbeFrame> = []
   let reason: string | undefined
@@ -431,6 +432,8 @@ test.skipIf(!binary)("private daemon: epoch guard prevents old queued deletion f
     await rm(scratch, { recursive: true, force: true })
   }
 }, 20_000)
+
+})
 
 test.skipIf(!binary)("private daemon: subscribe rows carry lexical type when requested", async () => {
   const scratch = await mkdtemp(join(process.env.WATCH_TEST_DIRECTORY ?? "/tmp/opencode", "observed-fields-"))

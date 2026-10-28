@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test"
+import { describe, expect, test } from "bun:test"
 import { spawn } from "node:child_process"
 import { mkdir, mkdtemp, rm, unlink, writeFile } from "node:fs/promises"
 import { createConnection, createServer, type Socket } from "node:net"
@@ -6,6 +6,7 @@ import { join } from "node:path"
 import { NodeFileSystem, NodePath } from "@effect/platform-node"
 import { Effect, Layer, Stream } from "effect"
 import { Inventory, Watchman } from "../effect-watchman.js"
+import { encode, readCommands, readFrames } from "./wire.ts"
 
 const binary = process.env.WATCHMAN_TEST_BINARY
 const until = async (predicate: () => boolean | Promise<boolean>) => {
@@ -16,6 +17,7 @@ const until = async (predicate: () => boolean | Promise<boolean>) => {
   }
 }
 
+describe.each(["json", "bser"] as const)("%s inventory daemon", (wireFormat) => {
 test.skipIf(!binary)("private daemon: real public clock join, pre-ack race, fresh rejection, rebaseline and restart", async () => {
   const directory = await mkdtemp("/tmp/opencode/inventory-daemon-")
   const root = join(directory, "root")
@@ -44,24 +46,17 @@ test.skipIf(!binary)("private daemon: real public clock join, pre-ack race, fres
   let daemon = await start()
   let foreign = false
   let subscribes = 0
-  const commands: unknown[][] = []
+  const commands: ReadonlyArray<unknown>[] = []
   const sockets: Socket[] = []
   const server = createServer((client) => {
     const remote = createConnection({ path: daemonSocket })
     sockets.push(client, remote)
     client.on("error", () => {}); remote.on("error", () => client.destroy())
     client.once("close", () => remote.destroy()); remote.once("close", () => client.destroy())
-    let incoming = ""
-    let outgoing = ""
-    let ack: string | undefined
-    client.on("data", (chunk) => {
-      incoming += chunk.toString()
-      while (incoming.includes("\n")) {
-        const end = incoming.indexOf("\n")
-        const command: unknown[] = JSON.parse(incoming.slice(0, end))
-        incoming = incoming.slice(end + 1)
+    let ack: Buffer | undefined
+    readCommands(wireFormat, client, (command) => {
         commands.push(command)
-        if (command[0] !== "subscribe") { remote.write(JSON.stringify(command) + "\n"); continue }
+        if (command[0] !== "subscribe") { remote.write(encode(wireFormat, command)); return }
         subscribes++
         const options = command[3] as { since: string }
         if (foreign) { foreign = false; options.since = "c:0:0:0:1" }
@@ -73,22 +68,16 @@ test.skipIf(!binary)("private daemon: real public clock join, pre-ack race, fres
             await unlink(join(root, "a.ts"))
             await writeFile(join(root, "a.ts"), "recreated")
           }
-          remote.write(JSON.stringify(command) + "\n")
+          remote.write(encode(wireFormat, command))
         })()
-      }
     })
-    remote.on("data", (chunk) => {
-      outgoing += chunk.toString()
-      while (outgoing.includes("\n")) {
-        const end = outgoing.indexOf("\n")
-        const line = outgoing.slice(0, end)
-        outgoing = outgoing.slice(end + 1)
-        const frame = JSON.parse(line) as { subscribe?: string; subscription?: string }
+    readFrames(wireFormat, remote, (input) => {
+        if (typeof input !== "object" || input === null) throw new Error("Private daemon frame must be an object")
+        const frame = encode(wireFormat, input)
         // Reorder only the first real ack behind its catch-up frame to prove staging deterministically.
-        if (subscribes === 1 && frame.subscribe) { ack = line; continue }
-        client.write(line + "\n")
-        if (ack && frame.subscription) { client.write(ack + "\n"); ack = undefined }
-      }
+        if (subscribes === 1 && "subscribe" in input) { ack = frame; return }
+        client.write(frame)
+        if (ack && "subscription" in input) { client.write(ack); ack = undefined }
     })
   })
   await new Promise<void>((resolve) => server.listen(socketPath, resolve))
@@ -132,7 +121,7 @@ test.skipIf(!binary)("private daemon: real public clock join, pre-ack race, fres
       yield* Effect.promise(() => until(() => present.has("after-restart.ts")))
       expect(events.at(-1)).toMatchObject({ type: "changes", epoch: (yield* view.state).epoch, sequence: 1 })
       expect(yield* view.state).toMatchObject({ state: "active" })
-    })).pipe(Effect.provide(Watchman.layerWithGlob({ socketPath, approvedRoots: [root], retryMinMs: 5, retryMaxMs: 10 }).pipe(Layer.provide(Layer.mergeAll(NodeFileSystem.layer, NodePath.layer))))))
+    })).pipe(Effect.provide(Watchman.layerWithGlob({ socketPath, ...(wireFormat === "bser" ? { wireFormat } : {}), approvedRoots: [root], retryMinMs: 5, retryMaxMs: 10 }).pipe(Layer.provide(Layer.mergeAll(NodeFileSystem.layer, NodePath.layer))))))
   } finally {
     sockets.forEach((socket) => socket.destroy())
     await new Promise<void>((resolve) => server.close(() => resolve()))
@@ -140,3 +129,4 @@ test.skipIf(!binary)("private daemon: real public clock join, pre-ack race, fres
     await rm(directory, { recursive: true, force: true })
   }
 }, 30_000)
+})

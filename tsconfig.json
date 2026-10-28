@@ -7,7 +7,8 @@
     "exactOptionalPropertyTypes": true,
     "skipLibCheck": true,
     "types": ["bun"],
-    "noEmit": true
+    "noEmit": true,
+    "allowImportingTsExtensions": true
   },
   "include": ["effect-watchman.ts", "src/**/*.ts", "test/**/*.ts", "examples/**/*.ts"]
 }
