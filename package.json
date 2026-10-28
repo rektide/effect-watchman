@@ -48,6 +48,6 @@
 		"@superbfowle/bser-esm": "github:rektide/bser-esm",
 		"glob": "13.0.6",
 		"minimatch": "10.0.3",
-		"watchman-client-json": "file:../watchman-client-json"
+		"watchman-client-json": "github:rektide/watchman-client-json#main"
 	}
 }

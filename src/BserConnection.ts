@@ -6,7 +6,7 @@ import { ConfigReply, Envelope, QueryReply, Reply, SubscriptionCanceled, type Co
 import { BserFraming } from "./BserFraming.ts"
 
 const decodeReply = Schema.decodeUnknownSync(Reply)
-const decodeEnvelope = Schema.decodeUnknownSync(Schema.Struct({ ...Envelope.fields, log: Schema.optional(Schema.String) }))
+const decodeEnvelope = Schema.decodeUnknownSync(Envelope)
 const decodeQuery = Schema.decodeUnknownSync(QueryReply)
 const decodeConfig = Schema.decodeUnknownSync(ConfigReply)
 
@@ -175,7 +175,7 @@ export class BserConnection {
           this.listeners.get(envelope.subscription)?.push(reply)
           return !this.terminal
         }
-        if (envelope.log !== undefined) return true
+        if (envelope.log !== undefined) return !this.terminal
         const pending = this.pending
         if (!pending) { this.fail(new Error("Watchman unsolicited response")); return false }
         if (envelope.error) { this.pending = undefined; pending.reject(new Error(envelope.error)); this.sendNext(); return !this.terminal }

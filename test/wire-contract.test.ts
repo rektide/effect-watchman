@@ -178,7 +178,8 @@ describe.each(["json", "bser"] as const)("%s wire contract", (wireFormat) => {
     })
   })
 
-  test.skipIf(wireFormat === "bser")("fatal UTF-8 contract (BSER skipped: upstream codec decodes lossily; human decision pending)", async () => {
+  // Permanent marker: the human accepted BSER's lossy UTF-8 contract on 2026-10-28.
+  test.skipIf(wireFormat === "bser")("fatal UTF-8 contract (BSER permanently skipped: human-accepted lossy codec)", async () => {
     await fixture(wireFormat, async ({ connection }) => {
       await expect(connection.command(["clock"], "clock", undefined, signal())).rejects.toThrow()
       expect(() => connection.check()).toThrow()
@@ -189,7 +190,7 @@ describe.each(["json", "bser"] as const)("%s wire contract", (wireFormat) => {
     })
   })
 
-  test.skipIf(wireFormat === "json")("logs do not consume a command slot (JSON upstream classifier follow-up required)", async () => {
+  test("logs do not consume a command slot", async () => {
     await fixture(wireFormat, async ({ connection }) => {
       expect((await connection.command(["clock"], "clock", undefined, signal())).clock).toBe("c:reply")
       connection.check()

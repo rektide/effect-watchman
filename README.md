@@ -8,7 +8,7 @@ author: GPT-6.1 Sol xhigh
 date: 2026-10-28
 sources:
   - resource: "opencode://ses_e7c90f1d6ffeviS28mp5Msdsk1"
-    title: Add construction-time JSON/BSER choice with JSON default; document byte limits, lossy BSER strictness, measured tradeoffs, dependency publication blocker and verified parity limits
+    title: Implement JSON-default dual backends; human approves the ledger and permanent lossy-BSER contract, authorizes client publication/log parity, and adopts the published GitHub client
   - resource: "opencode://ses_e7c9d0041ffeVARzmCo25gRZvM"
     title: Ship raw TypeScript sources; repoint package entrypoints at .ts files
   - resource: "opencode://ses_e809723ffffe8kD6j9UHE5XIV7"
@@ -138,8 +138,9 @@ const bser = Watchman.layer({ socketPath: "/path/to/watchman.sock", wireFormat: 
 | `"json"` (default) | Extracted `watchman-client-json`; reviewed S1 segmented JSON-lines framing | Fatal UTF-8 rejection; malformed text is connection-terminal |
 | `"bser"` (opt-in) | BSER v1 length-prefixed PDUs with `@superbfowle/bser-esm` 3.0.0 | **Lossy UTF-8**: invalid bytes silently become U+FFFD; not strict-text parity |
 
-The BSER degradation is implemented **pending human sign-off**, not accepted
-policy. Schema validation after decoding cannot detect replaced bytes or recover
+The human **accepted this BSER degradation on 2026-10-28**, with JSON remaining
+the default and the skipped BSER fatal-text test retained permanently. Schema
+validation after decoding cannot detect replaced bytes or recover
 the original filenames. A fatal-string/bounds patch would require maintaining
 and distributing a real codec fork; this integration does not patch the codec.
 Do not choose BSER where exact non-UTF-8 rejection is required. Its exact int64
@@ -155,10 +156,10 @@ objects is not a decoded-heap or nesting/expansion bound. V2 is unsupported.
 Command FIFO ownership after cancellation, listener-before-subscribe and complete
 delivery ordering are retained. Detaching local routing is not unsubscribe.
 
-**Known classifier gap:** BSER ignores unilateral `log` frames without consuming
-a command slot. The extracted JSON client's existing classifier does not yet do
-that and may terminate on a log frame. The filesystem APIs never enable daemon
-logs. This is a tracked parity gap, not a claim that both classifiers are identical.
+Both backends ignore unilateral string `log` frames without consuming a command
+slot or buffering log text, after cancellation and named-subscription routing.
+The published JSON client's fix closes the original classifier gap. The
+filesystem APIs do not enable daemon logs themselves.
 
 The measured tradeoff favors choice, not a speed claim: at 100k files,
 `bser-esm` decode was **~1.8× slower** than fatal UTF-8 + `JSON.parse` (31.1 vs
@@ -168,13 +169,13 @@ of the new integration or a host latency guarantee. See
 [bench0](file:///home/rektide/src/opencode-watch-rebuild/design/filesystem-watch/bser-bench0.sol61x.md)
 and [bench1](file:///home/rektide/src/opencode-watch-rebuild/design/filesystem-watch/bser-bench1.sol61x.md).
 
-**Local dependency / release blocker:** `watchman-client-json@0.1.0` is currently
-`file:../watchman-client-json`, unpublished and unpushed. It must be published to
-its GitHub family repository and this dependency changed before effect-watchman's
-`main` is externally installable. That publication/push is a human decision.
+`watchman-client-json@0.1.0` is now published to its
+[GitHub family repository](https://github.com/rektide/watchman-client-json), consumed
+as `github:rektide/watchman-client-json#main`; no sibling checkout or npm package
+is required. The human approved the interface ledger and authorized publication
+and effect-watchman's `main` push on 2026-10-28. Versions remain unchanged.
 `@superbfowle/bser-esm` uses `github:rektide/bser-esm`; the Bun lock records the
-reviewed commit. No package publication, main-bookmark move or push accompanies
-this work. See the [implementation/sign-off receipt](doc/dual-backend0.sol61x.md).
+reviewed commits. See the [implementation/sign-off receipt](doc/dual-backend0.sol61x.md).
 
 ```sh
 bun install --frozen-lockfile
@@ -202,4 +203,5 @@ The [S1 materialization checkpoint](doc/inventory/source-materialization-s1.sol6
 records linear JSON framing, phase attribution and the remaining synchronous-work limit.
 The extracted JSON client now owns that framing; integration-side lexical/sort
 diagnostics remain local. The [dual-backend receipt](doc/dual-backend0.sol61x.md)
-records shared semantic tests, BSER daemon coverage and the unresolved policy gaps.
+records shared semantic tests, BSER daemon coverage and the human-approved
+strictness/publication follow-up.

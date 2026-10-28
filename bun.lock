@@ -8,7 +8,7 @@
         "@superbfowle/bser-esm": "github:rektide/bser-esm",
         "glob": "13.0.6",
         "minimatch": "10.0.3",
-        "watchman-client-json": "file:../watchman-client-json",
+        "watchman-client-json": "github:rektide/watchman-client-json#main",
       },
       "devDependencies": {
         "@effect/platform-node": "4.0.1",
@@ -94,7 +94,7 @@
 
     "undici-types": ["undici-types@8.9.0", "", {}, "sha512-KTDyRTYX8sWmKXAikPHHSyc63CRPETMctyjKFupcC6OBLXT3xsN0e9aF7m+mIXutFWpUXuedtowG7iLOzp0kQg=="],
 
-    "watchman-client-json": ["watchman-client-json@file:../watchman-client-json", { "devDependencies": { "@types/bun": "1.4.0", "@types/node": "26.6.5", "@typescript/native-preview": "7.0.0-dev.20251207.1", "effect": "4.0.1" }, "peerDependencies": { "effect": "4.0.1" } }],
+    "watchman-client-json": ["watchman-client-json@github:rektide/watchman-client-json#e88f258", { "peerDependencies": { "effect": "4.0.1" } }, "rektide-watchman-client-json-e88f258", "sha512-zER4cZG7Gd1ZqYcQnAnifuz6EYPLOUxKtYfIn/eF8NNiuCjXfbtrafDzNal3T9iwH/H0CZuaET2FylA6Ra3IEA=="],
 
     "ws": ["ws@8.22.0", "", { "peerDependencies": { "bufferutil": "^4.0.1", "utf-8-validate": ">=5.0.2" }, "optionalPeers": ["bufferutil", "utf-8-validate"] }, "sha512-Ydggc987+RO0AnWtZ/7Wq9FtNvcrL1b/RO0ud9mWjUPgDrsAAwQSF51sm2hm1XofbU/4jkpGEsLFsZZxU+1DOg=="],
 
